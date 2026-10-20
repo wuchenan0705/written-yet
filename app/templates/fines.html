@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block body %}
+<h1>💸 罰金帳本</h1>
+<div class="card"><div class="stat"><span class="muted">未付總額</span><b class="{{ 'bad' if total }}">{{ total }}</b></div>
+<p class="muted">付款對象：{{ st.fine_note }}。系統只記帳，轉帳請自己來，付完按「已付」。</p></div>
+<div class="card"><table>
+<tr><th>日期</th><th>金額</th><th>狀態</th></tr>
+{% for f in items %}<tr><td>{{ f.date }}</td><td>{{ f.amount }}</td><td>
+{% if f.paid %}<span class="ok">已付 {{ f.paid_at.strftime('%m/%d') }}</span>{% else %}
+<form method="post" action="/fines/{{ f.id }}/paid"><button class="ghost">標記已付</button></form>{% endif %}
+</td></tr>{% else %}<tr><td colspan="3" class="muted">還沒有罰金，保持下去 💪</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

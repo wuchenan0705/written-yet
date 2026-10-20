@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>寫未？</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#d97706}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--fg:#e8eaee;--muted:#9aa1ad;--line:#2c313b;--accent:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1}
+nav{max-width:860px;margin:auto;display:flex;gap:4px;padding:8px 16px;overflow-x:auto}
+nav a{padding:6px 10px;border-radius:8px;color:var(--fg);text-decoration:none;white-space:nowrap}
+nav a:hover{background:var(--bg)}
+main{max-width:860px;margin:auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h1{font-size:1.4rem;margin:.2em 0 .6em} h2{font-size:1.1rem;margin:.2em 0 .6em}
+.muted{color:var(--muted);font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat b{display:block;font-size:1.6rem}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar i.full{background:var(--ok)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+input[type=checkbox]{width:auto}
+textarea{min-height:320px}
+label{display:block;margin:8px 0 4px;font-size:.92rem}
+button,.btn{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;text-decoration:none;display:inline-block}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line);padding:4px 10px}
+.tag{display:inline-block;font-size:.8rem;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
+.ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+.mistake{border-top:1px solid var(--line);padding:12px 0}
+.mistake:first-child{border-top:0}
+blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--accent);background:var(--bg);border-radius:4px}
+.notice{background:var(--bg);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse} td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}
+fieldset{border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:8px 12px 12px}
+legend{padding:0 6px;font-weight:600}
+pre{white-space:pre-wrap;word-break:break-word}
+</style>
+</head>
+<body>
+{% if request.session.get('auth') %}
+<header><nav>
+<a href="/">🏠 今日</a><a href="/submit">📝 交題目</a><a href="/mistakes">📕 錯題本</a><a href="/writing">✍️ 寫作</a><a href="/fines">💸 罰金</a><a href="/settings">⚙️ 設定</a>
+</nav></header>
+{% endif %}
+<main>{% block body %}{% endblock %}</main>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block body %}
+<h1>⚙️ 設定</h1>
+{% for n in notes %}<div class="notice">{{ n }}</div>{% endfor %}
+{% if st.pending_penalty %}<div class="notice warn">⏳ 待生效（{{ st.pending_apply_at.strftime('%m/%d %H:%M') }}）：
+{% for k, v in st.pending_penalty.items() %}<span class="tag">{{ k }} → {{ v }}</span> {% endfor %}</div>{% endif %}
+<form method="post">
+<div class="card">
+<fieldset><legend>每日目標（篇數：每交一次算一篇，0 = 不設）</legend><div class="grid">
+{% for s in SKILLS %}<div><label>{{ SKILL_ZH[s] }}</label><input type="number" min="0" name="goal_{{ s }}" value="{{ st.goals.get(s, 0) }}"></div>{% endfor %}
+</div></fieldset>
+<fieldset><legend>時間</legend><div class="grid">
+<div><label>早上提醒</label><input type="time" name="morning_time" value="{{ st.morning_time }}"></div>
+<div><label>晚上警告</label><input type="time" name="evening_time" value="{{ st.evening_time }}"></div>
+<div><label>截止</label><input type="time" name="deadline_time" value="{{ st.deadline_time }}"></div>
+<div><label>結算</label><input type="time" name="settle_time" value="{{ st.settle_time }}"></div>
+</div></fieldset>
+<fieldset><legend>其他</legend><div class="grid">
+<div><label>你的名字（群組公告用）</label><input name="display_name" value="{{ st.display_name }}"></div>
+<div><label>LINE 每月推播上限</label><input type="number" name="push_monthly_limit" value="{{ st.push_monthly_limit }}"></div>
+</div>
+<p class="muted">LINE 綁定：{{ '✅ 已綁定' if st.owner_user_id else '❌ 未綁定（加機器人好友後傳「綁定 密碼」）' }}</p>
+</fieldset>
+</div>
+
+<div class="card">
+<h2>懲罰機制</h2>
+<p class="muted">開啟立即生效；關閉或修改參數要等 24 小時（防止臨時反悔）。</p>
+<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_streak" {{ 'checked' if st.pen_streak }}> 🔥 連續紀錄歸零 + 欠債累積</label></legend>
+<label>欠債上限（目標的幾倍）</label><input type="number" step="0.5" min="1" name="debt_cap" value="{{ st.debt_cap }}"></fieldset>
+
+<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_shame" {{ 'checked' if st.pen_shame }}> 📢 公開羞恥</label></legend>
+<p class="muted">群組：{{ '✅ 已設定' if st.shame_group_id else '❌ 未設定（把機器人拉進群組，你在群組輸入「監督群組」）' }}。群組推播按人數計算額度。</p>
+<label>公告文字（可用 {name} {done} {target} {streak}）</label><input name="shame_template" value="{{ st.shame_template }}"></fieldset>
+
+<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_fine" {{ 'checked' if st.pen_fine }}> 💸 罰金記帳</label></legend>
+<div class="grid"><div><label>每次罰金</label><input type="number" min="0" name="fine_amount" value="{{ st.fine_amount }}"></div>
+<div><label>付給誰</label><input name="fine_note" value="{{ st.fine_note }}"></div></div></fieldset>
+
+<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_bomb" {{ 'checked' if st.pen_bomb }}> 💣 升級轟炸提醒</label></legend>
+<div class="grid"><div><label>間隔（分鐘，逗號分隔，最後一個會重複）</label><input name="bomb_intervals" value="{{ st.bomb_intervals }}"></div>
+<div><label>每天最多幾則</label><input type="number" min="0" name="bomb_max_per_day" value="{{ st.bomb_max_per_day }}"></div></div>
+<p class="muted">轟炸只用剩餘額度，會先保留本月每天的早晚提醒與結算。</p></fieldset>
+
+<fieldset><legend>🛌 請假</legend><label>每月可請假次數</label><input type="number" min="0" name="leave_per_month" value="{{ st.leave_per_month }}"></fieldset>
+</div>
+<button>儲存</button>
+</form>
+<form method="post" action="/logout" style="margin-top:24px"><button class="ghost">登出</button></form>
+{% endblock %}

@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/app.db
+    volumes:
+      - ./data:/app/data
+    # Only reachable from this machine; expose it with your tunnel (e.g. cloudflared).
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped

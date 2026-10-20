@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block body %}
+{% if finished %}<div class="notice ok">🎉 今日目標全部完成！</div>{% endif %}
+{% if sub.source_label %}<p class="muted" style="margin:0">📖 <a href="/mistakes?book={{ sub.book|urlencode }}&test={{ sub.test|urlencode }}&part={{ sub.part|urlencode }}&show=all">{{ sub.source_label }}</a></p>{% endif %}
+<h1>{{ SKILL_ZH[sub.skill] }} · {{ sub.date }}
+{% if sub.skill in ('listening','reading') %}<span class="tag">{{ sub.correct_count }}/{{ sub.question_count }}</span>{% endif %}
+{% if r.band_estimate %}<span class="tag">Band {{ r.band_estimate }}</span>{% endif %}</h1>
+{% if r.summary %}<div class="card">{{ r.summary }}</div>{% endif %}
+{% if r.missing_answers %}<div class="notice warn">⚠️ 找不到你在第 {{ r.missing_answers|join('、') }} 題的答案，這些題沒有計分。下次附上檢討頁截圖或打上答案（如「27A 37 NO」）。</div>{% endif %}
+
+{% if mistakes %}<div class="card"><h2>錯題解析（{{ mistakes|length }}）</h2>
+{% for m in mistakes %}<div class="mistake">
+<div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span></span>
+<form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="ghost">{{ '✅ 已懂' if m.understood else '標記已懂' }}</button></form></div>
+<p><b>{{ m.question }}</b></p>
+<p>你的答案：<span class="bad">{{ m.user_answer or '（空）' }}</span>　正解：<span class="ok">{{ m.correct_answer }}</span></p>
+{% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
+<p>{{ m.explanation }}</p>
+{% if m.tip %}<p>💡 {{ m.tip }}</p>{% endif %}
+</div>{% endfor %}</div>
+{% elif sub.skill in ('listening','reading') and r.correct_items %}<div class="card ok">全對，太強了 💯</div>{% endif %}
+
+{% if r.correct_items %}<details class="card" {{ 'open' if not mistakes }}><summary><b>✅ 答對的題目（{{ r.correct_items|length }}）</b></summary>
+{% for c in r.correct_items %}<div class="mistake">
+<p>{% if c.question_no %}<b>Q{{ c.question_no }}</b> {% endif %}{{ c.question }}</p>
+<p>答案：<span class="ok">{{ c.answer }}</span></p>
+{% if c.evidence %}<blockquote>{{ c.evidence }}</blockquote>{% endif %}
+{% if c.note %}<p class="muted">🔑 {{ c.note }}</p>{% endif %}
+</div>{% endfor %}</details>{% endif %}
+
+{% if r.criteria %}<div class="card"><h2>評分項目</h2><table>
+{% for c in r.criteria %}<tr><th>{{ c.name }}</th><td>{{ c.band }}</td><td>{{ c.comment }}</td></tr>{% endfor %}
+</table></div>{% endif %}
+
+{% if r.corrections %}<div class="card"><h2>修改建議</h2>
+{% for c in r.corrections %}<div class="mistake"><p class="bad">✗ {{ c.original }}</p><p class="ok">✓ {{ c.corrected }}</p><p class="muted">{{ c.reason }}</p></div>{% endfor %}
+</div>{% endif %}
+
+{% if r.improved_version %}<div class="card"><h2>高分示範</h2><pre>{{ r.improved_version }}</pre></div>{% endif %}
+
+<details class="card"><summary>原始提交內容</summary>
+{% for i in image_ids %}<p><a href="/images/{{ i }}" target="_blank"><img src="/images/{{ i }}" style="max-width:100%;border:1px solid var(--line);border-radius:6px"></a></p>{% endfor %}
+{% if sub.raw_text %}<pre>{{ sub.raw_text }}</pre>{% endif %}</details>
+{% endblock %}

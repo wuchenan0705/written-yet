@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% block body %}
+<h1>📝 交題目</h1>
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+<form method="post" enctype="multipart/form-data" class="card" id="f">
+<label>科目</label>
+<select name="skill">{% for s in SKILLS %}<option value="{{ s }}" {{ 'selected' if s == skill }}>{{ SKILL_ZH[s] }}</option>{% endfor %}</select>
+
+<details><summary class="muted" style="cursor:pointer;margin-top:8px">出處（可不填，會從截圖標題自動判斷，如 C21-Test 1-Passage 3）</summary>
+<div class="grid">
+<div><label>書本</label><input name="book" placeholder="C21"></div>
+<div><label>Test</label><input name="test" placeholder="Test 1"></div>
+<div><label>Part / Passage</label><input name="part" placeholder="Passage 3"></div>
+</div></details>
+
+<label>截圖（雅思哥檢討頁，有「正确答案／我的答案」那一塊；可多張，也可以直接 ⌘V 貼上）</label>
+<input type="file" name="files" id="files" accept="image/*" multiple>
+<div id="previews" class="thumbs"></div>
+
+<label>文字（可選：從雅思哥複製的文章題目、你的答案，例如「27A 28A 29C 37 NO」）</label>
+<textarea name="text" placeholder="可以只交截圖、只交文字，或兩個都給。&#10;沒有正確答案也可以，教練會自己解題判斷。">{{ text }}</textarea>
+<p class="muted">一次交一篇：一篇閱讀 / 一個聽力 Section / 一篇作文 / 一組口說。</p>
+<button id="go">送出批改</button>
+</form>
+<style>.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.thumbs img{height:90px;border:1px solid var(--line);border-radius:6px}</style>
+<script>
+const input = document.getElementById('files');
+const box = document.getElementById('previews');
+function show() {
+  box.innerHTML = '';
+  for (const f of input.files) {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    box.appendChild(img);
+  }
+}
+input.addEventListener('change', show);
+document.addEventListener('paste', (e) => {
+  const pasted = [...e.clipboardData.files].filter(f => f.type.startsWith('image/'));
+  if (!pasted.length) return;
+  e.preventDefault();
+  const dt = new DataTransfer();
+  for (const f of input.files) dt.items.add(f);
+  pasted.forEach((f, i) => dt.items.add(new File([f], `paste-${Date.now()}-${i}.png`, {type: f.type})));
+  input.files = dt.files;
+  show();
+});
+document.getElementById('f').addEventListener('submit', () => {
+  const b = document.getElementById('go');
+  b.disabled = true;
+  b.textContent = '批改中…約 30–60 秒';
+});
+</script>
+{% endblock %}

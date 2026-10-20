@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ day.date }}
+{% if day.status == 'completed' %}<span class="ok">🎉 完成</span>{% elif day.status == 'leave' %}<span class="muted">🛌 請假</span>{% elif day.status == 'failed' %}<span class="bad">❌ 未完成</span>{% endif %}
+</h1>
+<div class="grid">
+  <div class="card stat"><span class="muted">🔥 連續天數</span><b>{{ st.streak }}</b><span class="muted">最佳 {{ st.best_streak }}</span></div>
+  <div class="card stat"><span class="muted">🛌 本月可請假</span><b>{{ leaves_left }}</b></div>
+  <div class="card stat"><span class="muted">💸 未付罰金</span><b>{{ fines }}</b></div>
+  <div class="card stat"><span class="muted">📨 本月推播剩餘</span><b>{{ push_left }}</b></div>
+</div>
+<div class="card">
+<h2>今日目標</h2>
+{% for s, t in day.targets.items() %}{% set d = day.done.get(s, 0) %}{% set debt = t - (st.goals.get(s, 0)|int) %}
+<div class="row"><span>{{ SKILL_ZH[s] }} {% if debt > 0 %}<span class="tag warn">欠債 +{{ debt }} 篇</span>{% endif %}</span>
+<span>{{ d }}/{{ t }} 篇 <a class="muted" href="/submit?skill={{ s }}">交</a></span></div>
+<div class="bar"><i class="{{ 'full' if d >= t }}" style="width:{{ [100, (d * 100 // t) if t else 100]|min }}%"></i></div>
+{% else %}<p class="muted">還沒設定目標，去 <a href="/settings">設定</a>。</p>{% endfor %}
+<p class="muted">截止 {{ st.deadline_time }}，結算 {{ st.settle_time }}</p>
+</div>
+<div class="card">
+<h2>最近提交</h2>
+{% for s in recent %}
+<div class="row"><a href="/submissions/{{ s.id }}">{{ s.date }} {{ SKILL_ZH[s.skill] }}{% if s.source_label %} · {{ s.book }} {{ s.test }} {{ s.part }}{% endif %}</a>
+<span>{% if s.skill in ('listening','reading') %}{{ s.correct_count }}/{{ s.question_count }}{% elif s.result.band_estimate %}Band {{ s.result.band_estimate }}{% endif %}</span></div>
+{% else %}<p class="muted">還沒有提交。</p>{% endfor %}
+</div>
+{% endblock %}
