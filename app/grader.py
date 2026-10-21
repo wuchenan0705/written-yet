@@ -84,23 +84,24 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
-def grade(skill: str, text: str, images: Sequence[tuple[str, bytes]] = ()) -> dict:
-    """images: (media_type, data) pairs, e.g. screenshots of the 雅思哥 review page."""
-    content = [
+def _image_blocks(images: Sequence[tuple[str, bytes]]) -> list[dict]:
+    return [
         {"type": "image", "source": {"type": "base64", "media_type": mt,
                                      "data": base64.b64encode(data).decode()}}
         for mt, data in images
     ]
-    content.append({"type": "text", "text": f"科目：{SKILL_ZH[skill]}\n\n{text or '（內容在截圖裡）'}"})
+
+
+def _call(system: str, content: list[dict], schema: dict) -> dict:
     try:
         response = _get_client().beta.messages.create(
             model=config.CLAUDE_MODEL,
             max_tokens=16000,
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=[{"role": "user", "content": content}],
-            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
         )
     except anthropic.APIConnectionError as e:
         raise GradingError("連不上 Claude API，請稍後再試。") from e
@@ -118,9 +119,56 @@ def grade(skill: str, text: str, images: Sequence[tuple[str, bytes]] = ()) -> di
     texts = [b.text for b in response.content if b.type == "text"]
     if not texts:
         raise GradingError("Claude 沒有回傳結果。")
-    result = json.loads(texts[-1])
+    return json.loads(texts[-1])
+
+
+def grade(skill: str, text: str, images: Sequence[tuple[str, bytes]] = ()) -> dict:
+    """images: (media_type, data) pairs, e.g. screenshots of the 雅思哥 review page."""
+    content = _image_blocks(images)
+    content.append({"type": "text", "text": f"科目：{SKILL_ZH[skill]}\n\n{text or '（內容在截圖裡）'}"})
+    result = _call(SYSTEM_PROMPT, content, SCHEMA)
     if skill == "writing":
         result["question_count"], result["correct_count"] = 1, 0
     result["question_count"] = max(0, int(result["question_count"]))
     result["correct_count"] = max(0, min(int(result["correct_count"]), result["question_count"]))
+    return result
+
+
+ANSWERS_PROMPT = f"""你是雅思（IELTS）教練。學生之前交過一份{{skill}}練習，但有些題目的答案當時沒判斷到（例如從雅思哥複製文字時，單選題和 TRUE/FALSE/NOT GIVEN、YES/NO/NOT GIVEN 的勾選會消失）。現在學生補上這些題目的答案，請只批改學生列出的題號。
+
+規則：
+- 依原始內容（文章、聽力稿、題目、截圖）判斷每題的正確答案。學生有給正解就以學生給的為準；沒給就由你解題，並在 explanation 開頭註明「（教練判斷）」。
+- 學生答案常用縮寫：NG = NOT GIVEN，T / F = TRUE / FALSE，Y / N = YES / NO，大小寫不重要。
+- 答對放 correct_items（note 一句話點出關鍵，evidence 填定位句）；答錯放 mistakes（error_type 從這些擇一：{"、".join(ERROR_TYPES)}；explanation 說明為什麼錯、正解為何成立；evidence 填定位句；tip 給下次的做法）。學生答案是空白就算錯，error_type 填「未作答」。
+- user_answer 和 answer 用完整寫法（例如 NOT GIVEN），question 填題目原句。
+- 用繁體中文，英文原句保留英文。"""
+
+ANSWERS_SCHEMA = _obj({
+    "mistakes": SCHEMA["properties"]["mistakes"],
+    "correct_items": SCHEMA["properties"]["correct_items"],
+})
+
+
+def grade_answers(skill: str, original_text: str, images: Sequence[tuple[str, bytes]],
+                  answers: Sequence[tuple[str, str, str]]) -> dict:
+    """Grade answers the student filled in afterwards.
+
+    answers: (question_no, user_answer, correct_answer_or_empty). The original
+    submission is sent again so Claude can find the right answer and classify the error.
+    """
+    lines = []
+    for no, user, correct in answers:
+        line = f"第 {no} 題：學生答案「{user or '（未作答）'}」"
+        if correct:
+            line += f"，正解「{correct}」"
+        lines.append(line)
+    content = _image_blocks(images)
+    content.append({"type": "text", "text": (
+        f"原始提交內容：\n{original_text or '（內容在截圖裡）'}\n\n"
+        f"學生補上的答案（只批改這些題）：\n" + "\n".join(lines)
+    )})
+    result = _call(ANSWERS_PROMPT.format(skill=SKILL_ZH[skill]), content, ANSWERS_SCHEMA)
+    asked = {no.strip() for no, _, _ in answers}
+    result["mistakes"] = [m for m in result.get("mistakes", []) if m["question_no"].strip() in asked]
+    result["correct_items"] = [c for c in result.get("correct_items", []) if c["question_no"].strip() in asked]
     return result

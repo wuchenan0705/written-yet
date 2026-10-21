@@ -7,6 +7,7 @@ import re
 
 from sqlmodel import Session, select
 
+from app import grader
 from app.logic import get_or_create_day, get_settings, move_progress, remove_progress
 from app.models import SKILLS, Mistake, Submission, SubmissionImage
 
@@ -91,26 +92,60 @@ def correct_to_mistake(session: Session, sub: Submission, index: int, user_answe
     return m
 
 
-def add_answer(session: Session, sub: Submission, question_no: str, question: str,
-               user_answer: str, correct_answer: str, error_type: str, now) -> bool:
-    """Score a question by hand (e.g. one listed in missing_answers). Returns True if correct."""
-    question_no = question_no.strip()
+def parse_answers(text: str) -> list[tuple[str, str]]:
+    """Parse '27A 28 NOT GIVEN 29: ng' into [('27','A'), ('28','NOT GIVEN'), ('29','ng')]."""
+    pairs: list[tuple[str, list[str]]] = []
+    for tok in re.findall(r"\d+|[^\d\s,，;；:：、.]+", text):
+        if tok.isdigit():
+            pairs.append((tok, []))
+        elif pairs:
+            pairs[-1][1].append(tok)
+    return [(no, " ".join(words)) for no, words in pairs]
+
+
+def fill_answers(session: Session, sub: Submission, answers: list[tuple[str, str, str]],
+                 now, grade_fn=None) -> tuple[int, int]:
+    """Have Claude grade answers filled in after submission (e.g. multiple-choice
+    selections lost when copying text). Re-answering a question replaces it.
+
+    answers: (question_no, user_answer, correct_answer_or_empty).
+    Returns (graded, correct).
+    """
+    answers = [(no.strip(), user.strip(), correct.strip()) for no, user, correct in answers if no.strip()]
+    if not answers:
+        return 0, 0
+    images = [(i.media_type, i.data) for i in
+              session.exec(select(SubmissionImage).where(SubmissionImage.submission_id == sub.id)).all()]
+    graded = (grade_fn or grader.grade_answers)(sub.skill, sub.raw_text, images, answers)
+
     result = dict(sub.result)
-    result["missing_answers"] = [q for q in result.get("missing_answers", []) if q.strip() != question_no]
-    correct = same_answer(user_answer, correct_answer)
-    if correct:
-        _add_correct(result, {"question_no": question_no, "question": question.strip(),
-                              "answer": correct_answer.strip(), "note": "（手動補上）", "evidence": ""})
-    else:
-        session.add(Mistake(
-            submission_id=sub.id, created_at=now, skill=sub.skill, question_no=question_no,
-            question=question.strip(), user_answer=user_answer.strip(), correct_answer=correct_answer.strip(),
-            error_type=BLANK if not user_answer.strip() else (error_type or "其他"),
-            explanation="（手動補上）",
-        ))
-    _update(session, sub, result, +1, +1 if correct else 0)
+    nos = {c["question_no"].strip() for c in graded["correct_items"]} | {m["question_no"].strip() for m in graded["mistakes"]}
+    d_q = d_c = 0
+    # Drop earlier verdicts for the same questions so they are not counted twice.
+    for m in session.exec(select(Mistake).where(Mistake.submission_id == sub.id)).all():
+        if m.question_no.strip() in nos:
+            session.delete(m)
+            d_q -= 1
+    kept = []
+    for c in result.get("correct_items", []):
+        if c.get("question_no", "").strip() in nos:
+            d_q -= 1
+            d_c -= 1
+        else:
+            kept.append(c)
+    result["correct_items"] = kept
+
+    for c in graded["correct_items"]:
+        _add_correct(result, c)
+        d_q += 1
+        d_c += 1
+    for m in graded["mistakes"]:
+        session.add(Mistake(submission_id=sub.id, created_at=now, skill=sub.skill, **m))
+        d_q += 1
+    result["missing_answers"] = [q for q in result.get("missing_answers", []) if q.strip() not in nos]
+    _update(session, sub, result, d_q, d_c)
     session.commit()
-    return correct
+    return len(nos), len(graded["correct_items"])
 
 
 def change_info(session: Session, sub: Submission, skill: str, book: str, test: str,

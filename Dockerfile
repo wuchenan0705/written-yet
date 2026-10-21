@@ -7,4 +7,6 @@ RUN uv sync --locked --no-dev
 COPY app ./app
 ENV PATH="/app/.venv/bin:$PATH"
 # Single worker on purpose: the scheduler runs in-process.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
+# PORT comes from .env (default 8000); exec keeps uvicorn as PID 1 so it gets stop signals.
+ENV PORT=8000
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"$PORT\" --workers 1 --proxy-headers"]

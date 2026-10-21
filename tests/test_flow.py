@@ -190,3 +190,27 @@ def test_writing_guide_page_and_line_lookup():
         page = c.get("/writing").text
         assert "Task 1 題型（7 種）" in page and "Task 2 題型（6 種）" in page
         assert "Despite of" in page and 'id="c-contrast"' in page
+
+
+def test_line_fill_command(monkeypatch):
+    from app import review
+
+    init_db()
+    with Session(engine) as s:
+        sub = Submission(created_at=datetime(2026, 10, 21, 9), date="2026-10-21", skill="reading", source="web",
+                         raw_text="passage", question_count=1, correct_count=1, book="C9",
+                         result={"missing_answers": ["37", "38"], "correct_items": []})
+        s.add(sub)
+        s.commit()
+        s.refresh(sub)
+
+        def grade(skill, text, imgs, answers):
+            assert text == "passage" and answers == [("37", "NO", ""), ("38", "NG", "")]
+            return {"correct_items": [{"question_no": "37", "question": "", "answer": "NO", "note": "", "evidence": ""}],
+                    "mistakes": [{"question_no": "38", "question": "", "user_answer": "NOT GIVEN", "correct_answer": "FALSE",
+                                  "error_type": "NOT GIVEN/FALSE 混淆", "explanation": "", "evidence": "", "tip": ""}]}
+        monkeypatch.setattr(review.grader, "grade_answers", grade)
+        assert parse_command("補 37 NO 38 NG") == ("補", None, "37 NO 38 NG")
+        text = line_bot.fill_from_line(s, FakeLine(), "OWNER", "37 NO 38 NG")
+        assert "補批 2 題，答對 1 題" in text and "2/3" in text and f"/submissions/{sub.id}" in text
+        assert "格式：補" in line_bot.fill_from_line(s, FakeLine(), "OWNER", "")

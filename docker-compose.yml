@@ -9,6 +9,7 @@ services:
     volumes:
       - ./data:/app/data
     # Only reachable from this machine; expose it with your tunnel (e.g. cloudflared).
+    # Set PORT in .env to change it (e.g. PORT=8067); it is used inside and outside the container.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
     restart: unless-stopped

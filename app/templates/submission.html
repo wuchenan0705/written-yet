@@ -15,7 +15,7 @@
 </form></details>
 {% if r.summary %}<div class="card">{{ r.summary }}</div>{% endif %}
 {% if r.edited %}<p class="muted">✏️ 這份批改有手動修正過。</p>{% endif %}
-{% if r.missing_answers %}<div class="notice warn">⚠️ 找不到你在第 {{ r.missing_answers|join('、') }} 題的答案，這些題還沒計分。可以在下面「手動補一題」補上。</div>{% endif %}
+{% if r.missing_answers %}<div class="notice warn">⚠️ 找不到你在第 {{ r.missing_answers|join('、') }} 題的答案，這些題還沒計分。在下面「補答案」填上就會批改。</div>{% endif %}
 
 {% if mistakes %}<div class="card"><h2>錯題解析（{{ mistakes|length }}）</h2>
 {% for m in mistakes %}<div class="mistake" id="m{{ m.id }}">
@@ -57,14 +57,18 @@
 </div>{% endfor %}</details>{% endif %}
 
 {% if sub.skill in ('listening','reading') %}
-<details class="card" id="add" {{ 'open' if r.missing_answers }}><summary><b>＋ 手動補一題</b> <span class="muted">漏批或找不到答案的題目</span></summary>
-<form method="post" action="/submissions/{{ sub.id }}/answers" class="editgrid">
-<div><label>題號</label><input name="question_no" required value="{{ r.missing_answers[0] if r.missing_answers else '' }}"></div>
-<div><label>你的答案（空白 = 未作答）</label><input name="user_answer"></div>
-<div><label>正確答案</label><input name="correct_answer" required></div>
-<div><label>錯誤類型（答錯時）</label><select name="error_type">{% for t in error_types %}<option>{{ t }}</option>{% endfor %}</select></div>
-<div class="wide"><label>題目（可不填）</label><input name="question"></div>
-<div class="wide"><button>加入</button> <span class="muted">系統會自動比對你的答案和正解，決定算對還是錯。</span></div>
+<details class="card" id="add" {{ 'open' if r.missing_answers or fill_error }}><summary><b>＋ 補答案，交給教練批改</b> <span class="muted">選擇題勾選沒複製到、漏批的題目</span></summary>
+{% if fill_error %}<div class="notice bad">批改失敗：{{ fill_error }}</div>{% endif %}
+<form method="post" action="/submissions/{{ sub.id }}/answers" id="fillform">
+<table class="fill">
+<tr><th>題號</th><th>你的答案</th><th>正解（可空白）</th></tr>
+{% for q in r.missing_answers %}<tr><td><input name="no" value="{{ q }}" readonly></td><td><input name="user" placeholder="例如 NG / B"></td><td><input name="correct"></td></tr>{% endfor %}
+{% for _ in range(2 if r.missing_answers else 3) %}<tr><td><input name="no" placeholder="題號" inputmode="numeric"></td><td><input name="user"></td><td><input name="correct"></td></tr>{% endfor %}
+</table>
+<label>或一次貼上（會覆蓋上面同題號的答案）</label>
+<input name="quick" placeholder="27A 28C 29B 37 NO 38 NG 39 YES">
+<p class="muted">教練會回頭看原本的文章和截圖，判斷對錯、分類錯誤並寫解析。已經批過的題號再補一次會重新批改。</p>
+<button id="fillgo">送出批改</button>
 </form></details>
 {% endif %}
 
@@ -90,6 +94,18 @@ details.edit summary{cursor:pointer;color:var(--accent);font-size:.9rem}
 .editgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:4px 12px;margin-top:6px}
 .editgrid .wide{grid-column:1/-1}
 .editgrid textarea{min-height:0}
-#add,#correct{scroll-margin-top:70px}.mistake{scroll-margin-top:70px}
+#add,#correct{scroll-margin-top:70px}
+table.fill{width:100%;border-collapse:collapse;margin:6px 0}
+table.fill th{font-size:.85rem;color:var(--muted);font-weight:500;text-align:left;padding:2px 4px}
+table.fill td{padding:3px 4px;border:0}
+table.fill td:first-child{width:22%}.mistake{scroll-margin-top:70px}
 </style>
+<script>
+const ff = document.getElementById('fillform');
+if (ff) ff.addEventListener('submit', () => {
+  const b = document.getElementById('fillgo');
+  b.disabled = true;
+  b.textContent = '批改中…約 20–40 秒';
+});
+</script>
 {% endblock %}

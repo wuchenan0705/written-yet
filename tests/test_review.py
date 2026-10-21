@@ -73,14 +73,47 @@ def test_correct_item_marked_wrong(session):
     assert review.correct_to_mistake(session, sub, 3, "x", "其他", NOW) is None
 
 
-def test_add_answer_scores_missing_question(session):
-    sub = make_sub(session, missing=["27", "28"], q=2, c=1)
-    assert review.add_answer(session, sub, "27", "", "a", "A", "其他", NOW) is True
-    assert review.add_answer(session, sub, "28", "", "", "B", "其他", NOW) is False
+def test_parse_answers():
+    assert review.parse_answers("27A 28c 29: B") == [("27", "A"), ("28", "c"), ("29", "B")]
+    assert review.parse_answers("37 NOT GIVEN, 38 ng 39 yes") == [("37", "NOT GIVEN"), ("38", "ng"), ("39", "yes")]
+    assert review.parse_answers("hello") == []
+
+
+def fake_answers(correct_nos=(), wrong_nos=()):
+    calls = []
+
+    def grade(skill, text, images, answers):
+        calls.append(list(answers))
+        return {
+            "correct_items": [{"question_no": n, "question": f"Q{n}", "answer": "YES", "note": "", "evidence": ""}
+                              for n in correct_nos],
+            "mistakes": [{"question_no": n, "question": f"Q{n}", "user_answer": "NO", "correct_answer": "NOT GIVEN",
+                          "error_type": "NOT GIVEN/FALSE 混淆", "explanation": "", "evidence": "", "tip": ""}
+                         for n in wrong_nos],
+        }
+    return grade, calls
+
+
+def test_fill_answers_grades_missing_questions_with_claude(session):
+    sub = make_sub(session, missing=["37", "38", "39"], q=2, c=1)
+    grade, calls = fake_answers(correct_nos=["37"], wrong_nos=["38"])
+    assert review.fill_answers(session, sub, [("37", "Y", ""), ("38", "N", "NG"), (" ", "x", "")], NOW, grade) == (2, 1)
+    assert calls[0] == [("37", "Y", ""), ("38", "N", "NG")]
     session.refresh(sub)
-    assert sub.result["missing_answers"] == []
+    assert sub.result["missing_answers"] == ["39"]
     assert (sub.question_count, sub.correct_count) == (4, 2)
-    assert session.exec(select(Mistake)).one().error_type == "未作答"
+    assert session.exec(select(Mistake)).one().error_type == "NOT GIVEN/FALSE 混淆"
+
+
+def test_fill_answers_regrading_replaces_old_verdict(session):
+    sub = make_sub(session, correct_items=[{"question_no": "5", "question": "", "answer": "A", "note": "", "evidence": ""}], q=2, c=1)
+    add_mistake(session, sub, no="6")
+    grade, _ = fake_answers(correct_nos=["6"], wrong_nos=["5"])
+    review.fill_answers(session, sub, [("5", "B", ""), ("6", "C", "")], NOW, grade)
+    session.refresh(sub)
+    assert (sub.question_count, sub.correct_count) == (2, 1)
+    assert [c["question_no"] for c in sub.result["correct_items"]] == ["6"]
+    assert session.exec(select(Mistake)).one().question_no == "5"
 
 
 def test_review_page_routes(monkeypatch):
@@ -104,7 +137,7 @@ def test_review_page_routes(monkeypatch):
         c.post("/login", data={"password": "pw"})
         r = c.post("/submit", data={"skill": "reading", "text": "x"})
         sub_id = int(str(r.url).split("/submissions/")[1].split("?")[0])
-        assert "（未作答）" in r.text and "其實答對了" in r.text and "其實答錯了" in r.text and "手動補一題" in r.text
+        assert "（未作答）" in r.text and "其實答對了" in r.text and "其實答錯了" in r.text and "補答案，交給教練批改" in r.text
         with Session(engine) as s:
             mid = s.exec(select(Mistake).where(Mistake.submission_id == sub_id)).one().id
         r = c.post(f"/mistakes/{mid}/edit", data={"user_answer": "River", "correct_answer": "river",
@@ -112,8 +145,18 @@ def test_review_page_routes(monkeypatch):
         assert "答對的題目（2）" in r.text and "✏️ 這份批改有手動修正過" in r.text
         r = c.post(f"/submissions/{sub_id}/correct/1/mark-wrong", data={"user_answer": "C", "error_type": "細節漏看"})
         assert "答對的題目（1）" in r.text and "錯題解析（1）" in r.text
-        r = c.post(f"/submissions/{sub_id}/answers", data={"question_no": "3", "user_answer": "D", "correct_answer": "D"})
-        assert "找不到你在第" not in r.text
+        grade, calls = fake_answers(correct_nos=["3"])
+        monkeypatch.setattr(review.grader, "grade_answers", grade)
+        r = c.post(f"/submissions/{sub_id}/answers",
+                   data={"no": ["3", ""], "user": ["C", ""], "correct": ["", ""], "quick": "3 D"})
+        assert calls[-1] == [("3", "D", "")]
+        assert "看不到你" not in r.text and "找不到你在第" not in r.text
+
+        def broken(*a):
+            raise review.grader.GradingError("API 掛了")
+        monkeypatch.setattr(review.grader, "grade_answers", broken)
+        r = c.post(f"/submissions/{sub_id}/answers", data={"no": "9", "user": "A", "correct": ""})
+        assert "批改失敗：API 掛了" in r.text
         assert "修改科目／出處" in r.text
         r = c.post(f"/submissions/{sub_id}/info", data={"skill": "listening", "book": "C18", "test": "Test 2",
                                                        "part": "Section 1", "title": ""})

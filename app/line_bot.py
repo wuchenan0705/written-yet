@@ -27,7 +27,7 @@ from linebot.v3.webhooks import (
 )
 from sqlmodel import Session, select
 
-from app import clock, config, images, push, submissions, writing_guide
+from app import clock, config, images, push, review, submissions, writing_guide
 from app.db import engine
 from app.grader import GradingError
 from app.logic import get_or_create_day, get_settings, outstanding_fines, progress_text, use_leave
@@ -48,6 +48,7 @@ HELP = f"""📘 指令
 進度｜今天的進度與連續天數
 先傳雅思哥檢討頁截圖，再傳「交 閱讀」｜批改一篇（聽力/閱讀/寫作/口說）
 交 閱讀 ＋換行＋文字｜也可以直接貼文字，或文字＋截圖一起
+補 37 NO 38 NG｜補上最近一份沒判斷到的答案，交給教練批改
 清除｜丟掉還沒交的截圖
 寫作｜寫作題型與工具書
 連接詞 對比｜查某類連接詞（補充/對比/原因/結果/舉例/讓步/強調/順序/條件/換句話說/立場/結論）
@@ -145,6 +146,8 @@ def parse_command(text: str) -> tuple[str, Optional[str], str]:
         return "submit", SKILL_ALIASES[m.group(1)], m.group(2).strip()
     if text.startswith("綁定"):
         return "bind", None, text[2:].strip()
+    if text.startswith("補"):
+        return "補", None, text[1:].strip()
     if text.startswith("連接詞"):
         return "連接詞", None, text[3:].strip()
     for cmd in ("進度", "錯題", "請假", "罰金", "監督群組", "說明", "清除", "寫作"):
@@ -153,6 +156,30 @@ def parse_command(text: str) -> tuple[str, Optional[str], str]:
     if text in ("help", "指令", "?", "？"):
         return "說明", None, ""
     return "", None, text
+
+
+def fill_from_line(session: Session, t: "LineTransport", user_id: str, body: str) -> str:
+    """補 27A 28 NG — grade answers for the latest submission that still has missing ones."""
+    answers = review.parse_answers(body)
+    if not answers:
+        return "格式：補 37 NO 38 NG 39 YES（或 27A 28C）\n會補到最近一份還有題目沒計分的提交。"
+    subs = session.exec(select(Submission).order_by(Submission.id.desc()).limit(20)).all()
+    target = next((x for x in subs if x.result.get("missing_answers")), subs[0] if subs else None)
+    if target is None:
+        return "還沒有任何提交可以補。"
+    t.loading(user_id)
+    try:
+        graded, correct = review.fill_answers(session, target, [(no, a, "") for no, a in answers], clock.now())
+    except GradingError as e:
+        return f"⚠️ 批改失敗：{e}"
+    session.refresh(target)
+    lines = [f"✍️ {target.source_label or SKILL_ZH[target.skill]}",
+             f"補批 {graded} 題，答對 {correct} 題",
+             f"這份目前 {target.correct_count}/{target.question_count}"]
+    if target.result.get("missing_answers"):
+        lines.append(f"還沒計分：第 {'、'.join(target.result['missing_answers'])} 題")
+    lines.append(f"解析：{config.BASE_URL}/submissions/{target.id}")
+    return "\n".join(lines)
 
 
 def writing_summary() -> str:
@@ -256,6 +283,10 @@ def handle_event(ev) -> None:
             else:
                 names = "、".join(g["title"] for g in writing_guide.CONNECTORS)
                 t.reply(ev.reply_token, f"要查哪一類？例如「連接詞 對比」\n{names}\n\n完整版：{config.BASE_URL}/writing#connectors")
+        elif cmd == "補":
+            text = fill_from_line(session, t, user_id, body)
+            if not t.reply(ev.reply_token, text):  # reply token can expire during grading
+                push.send_owner(session, st, clock.now(), text, "reply")
         elif cmd == "清除":
             n = clear_drafts(session)
             t.reply(ev.reply_token, f"🗑 已清除 {n} 張待批改截圖。")

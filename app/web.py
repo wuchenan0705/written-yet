@@ -1,5 +1,6 @@
 """Password-protected web dashboard."""
 import hmac
+from urllib.parse import quote
 from collections import Counter
 from pathlib import Path
 
@@ -148,7 +149,7 @@ def delete_submission(sub_id: int, session: Session = Depends(get_session)):
 
 
 @router.get("/submissions/{sub_id}", dependencies=[Auth])
-def submission_detail(request: Request, sub_id: int, finished: int = 0,
+def submission_detail(request: Request, sub_id: int, finished: int = 0, fill_error: str = "",
                       session: Session = Depends(get_session)):
     sub = session.get(Submission, sub_id)
     if not sub:
@@ -161,7 +162,8 @@ def submission_detail(request: Request, sub_id: int, finished: int = 0,
         select(SubmissionImage.id).where(SubmissionImage.submission_id == sub_id)
     ).all()
     return render(request, "submission.html", sub=sub, r=sub.result, mistakes=mistakes,
-                  finished=bool(finished), image_ids=image_ids, error_types=ERROR_TYPES)
+                  finished=bool(finished), image_ids=image_ids, error_types=ERROR_TYPES,
+                  fill_error=fill_error)
 
 
 @router.get("/images/{image_id}", dependencies=[Auth])
@@ -273,13 +275,21 @@ def mark_correct_wrong(sub_id: int, index: int, user_answer: str = Form(""),
 
 
 @router.post("/submissions/{sub_id}/answers", dependencies=[Auth])
-def add_answer(sub_id: int, question_no: str = Form(...), question: str = Form(""),
-               user_answer: str = Form(""), correct_answer: str = Form(...),
-               error_type: str = Form("其他"), session: Session = Depends(get_session)):
+async def fill_answers(request: Request, sub_id: int, session: Session = Depends(get_session)):
     sub = session.get(Submission, sub_id)
     if not sub:
         raise HTTPException(404)
-    review.add_answer(session, sub, question_no, question, user_answer, correct_answer, error_type, clock.now())
+    form = await request.form()
+    answers = [(no, user, correct) for no, user, correct in
+               zip(form.getlist("no"), form.getlist("user"), form.getlist("correct")) if no.strip()]
+    # The quick-entry box ("27A 28 NG ...") adds to / overrides the rows.
+    quick = dict(review.parse_answers(form.get("quick", "")))
+    answers = [(no, quick.pop(no.strip(), user), correct) for no, user, correct in answers]
+    answers += [(no, user, "") for no, user in quick.items()]
+    try:
+        await run_in_threadpool(review.fill_answers, session, sub, answers, clock.now())
+    except GradingError as e:
+        return RedirectResponse(f"/submissions/{sub_id}?fill_error={quote(str(e))}#add", 303)
     return _back(sub_id)
 
 

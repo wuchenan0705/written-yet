@@ -60,7 +60,9 @@ def line_summary(session: Session, sub: Submission, finished: bool) -> str:
     if r.get("summary"):
         lines.append(r["summary"])
     if r.get("missing_answers"):
-        lines.append(f"⚠️ 找不到你的答案：第 {'、'.join(r['missing_answers'])} 題（沒計分）")
+        nos = r["missing_answers"]
+        lines.append(f"⚠️ 第 {'、'.join(nos)} 題看不到你的答案（沒計分）")
+        lines.append(f"補答案：傳「補 {nos[0]} A {nos[-1]} NG」這樣的格式" if len(nos) > 1 else f"補答案：傳「補 {nos[0]} 你的答案」")
     top = Counter(m["error_type"] for m in r.get("mistakes", [])).most_common(3)
     if top:
         lines.append("錯誤類型：" + "、".join(f"{t}×{n}" for t, n in top))
