@@ -9,7 +9,7 @@ from app import config
 from app.models import SKILL_ZH
 
 ERROR_TYPES = [
-    "同義替換沒認出", "NOT GIVEN/FALSE 混淆", "定位錯誤", "細節漏看", "拼字錯誤",
+    "未作答", "同義替換沒認出", "NOT GIVEN/FALSE 混淆", "定位錯誤", "細節漏看", "拼字錯誤",
     "單複數/詞形", "字數限制", "數字/日期", "詞彙不認識", "推論/邏輯", "文法", "其他",
 ]
 
@@ -22,7 +22,8 @@ SYSTEM_PROMPT = f"""你是一位嚴格但友善的雅思（IELTS）教練，學�
 
 規則：
 - 找不到正確答案的題目，由你依原文解題判斷，並在 explanation 開頭註明「（教練判斷）」。
-- 找不到學生答案的題目不要猜，把題號放進 missing_answers，也不計入 question_count 和 correct_count。
+- 學生沒作答的題目算錯：填空/拖曳題的空格是空的、截圖「我的答案」那題是空白或「-」、或學生的答案列明確跳過某題，都放進 mistakes，user_answer 填空字串，error_type 填「未作答」，照樣解釋正解與定位句。
+- 只有「資訊遺失、無法判斷學生答了什麼」才放進 missing_answers（例如複製文字時單選題的勾選消失，又沒有截圖或答案列可對照），不要猜，也不計入 question_count 和 correct_count。空白的填空不是這種情況。
 
 依科目處理：
 - 聽力 / 閱讀：逐題比對。question_count 是本次的總題數，correct_count 是答對題數。每一題答錯都放進 mistakes，答對的放進 correct_items，兩者都依題號排序、question_no 填題號（如 "37"）。correct_items 的 note 用一句話點出這題的關鍵（例如同義替換 "ubiquitous ↔ widely available"），evidence 填定位句。mistakes 的 error_type 從這些類別擇一：{"、".join(ERROR_TYPES)}。evidence 填原文或聽力稿中能定位答案的那句（沒有原文就留空），explanation 說明為什麼錯、正確答案為何成立，tip 給下次遇到同類題的具體做法。

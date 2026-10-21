@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
-from app import clock, config, images, push, submissions, writing_guide
+from app import clock, config, images, push, review, submissions, writing_guide
 from app.db import get_session
 from app.grader import ERROR_TYPES, GradingError
 from app.logic import (
@@ -102,18 +102,66 @@ async def submit(request: Request, skill: str = Form(...), text: str = Form(""),
     return RedirectResponse(f"/submissions/{sub.id}?finished={int(finished)}", 303)
 
 
+@router.get("/submissions", dependencies=[Auth])
+def submissions_page(request: Request, skill: str = "", book: str = "", test: str = "",
+                     part: str = "", only: str = "", session: Session = Depends(get_session)):
+    q = select(Submission).order_by(Submission.date.desc(), Submission.id.desc())
+    filters = {Submission.skill: skill, Submission.book: book, Submission.test: test, Submission.part: part}
+    for col, val in filters.items():
+        if val:
+            q = q.where(col == val)
+    if only == "unsourced":
+        q = q.where(Submission.book == "")
+    subs = session.exec(q.limit(300)).all()
+
+    # Mistake counts per submission: total and not-yet-understood.
+    counts: dict[int, list[int]] = {}
+    if subs:
+        for m in session.exec(select(Mistake).where(Mistake.submission_id.in_([x.id for x in subs]))).all():
+            c = counts.setdefault(m.submission_id, [0, 0])
+            c[0] += 1
+            c[1] += not m.understood
+    if only == "open":
+        subs = [x for x in subs if counts.get(x.id, [0, 0])[1]]
+
+    def options(col, **where):
+        sq = select(col).distinct().where(col != "")
+        for c, v in where.items():
+            if v:
+                sq = sq.where(getattr(Submission, c) == v)
+        return sorted(session.exec(sq).all())
+
+    return render(
+        request, "submissions.html", subs=subs, counts=counts,
+        skill=skill, book=book, test=test, part=part, only=only,
+        books=options(Submission.book), tests=options(Submission.test, book=book),
+        parts=options(Submission.part, book=book, test=test),
+    )
+
+
+@router.post("/submissions/{sub_id}/delete", dependencies=[Auth])
+def delete_submission(sub_id: int, session: Session = Depends(get_session)):
+    sub = session.get(Submission, sub_id)
+    if sub:
+        review.delete_submission(session, sub)
+    return RedirectResponse("/submissions?deleted=1", 303)
+
+
 @router.get("/submissions/{sub_id}", dependencies=[Auth])
 def submission_detail(request: Request, sub_id: int, finished: int = 0,
                       session: Session = Depends(get_session)):
     sub = session.get(Submission, sub_id)
     if not sub:
         raise HTTPException(404)
-    mistakes = session.exec(select(Mistake).where(Mistake.submission_id == sub_id)).all()
+    mistakes = sorted(
+        session.exec(select(Mistake).where(Mistake.submission_id == sub_id)).all(),
+        key=lambda m: (0, int(m.question_no)) if m.question_no.isdigit() else (1, m.id),
+    )
     image_ids = session.exec(
         select(SubmissionImage.id).where(SubmissionImage.submission_id == sub_id)
     ).all()
     return render(request, "submission.html", sub=sub, r=sub.result, mistakes=mistakes,
-                  finished=bool(finished), image_ids=image_ids)
+                  finished=bool(finished), image_ids=image_ids, error_types=ERROR_TYPES)
 
 
 @router.get("/images/{image_id}", dependencies=[Auth])
@@ -177,6 +225,62 @@ def toggle_mistake(request: Request, mid: int, session: Session = Depends(get_se
         session.add(m)
         session.commit()
     return RedirectResponse(request.headers.get("referer") or "/mistakes", 303)
+
+
+def _back(sub_id: int, anchor: str = "") -> RedirectResponse:
+    return RedirectResponse(f"/submissions/{sub_id}{anchor}", 303)
+
+
+@router.post("/submissions/{sub_id}/info", dependencies=[Auth])
+def change_submission_info(sub_id: int, skill: str = Form(...), book: str = Form(""),
+                           test: str = Form(""), part: str = Form(""), title: str = Form(""),
+                           session: Session = Depends(get_session)):
+    sub = session.get(Submission, sub_id)
+    if not sub:
+        raise HTTPException(404)
+    review.change_info(session, sub, skill, book, test, part, title)
+    return _back(sub_id)
+
+
+@router.post("/mistakes/{mid}/edit", dependencies=[Auth])
+async def edit_mistake(request: Request, mid: int, session: Session = Depends(get_session)):
+    m = session.get(Mistake, mid)
+    if not m:
+        raise HTTPException(404)
+    sub_id = m.submission_id
+    moved = review.edit_mistake(session, m, dict(await request.form()))
+    return _back(sub_id, "#correct" if moved else f"#m{mid}")
+
+
+@router.post("/mistakes/{mid}/mark-correct", dependencies=[Auth])
+def mark_mistake_correct(mid: int, session: Session = Depends(get_session)):
+    m = session.get(Mistake, mid)
+    if not m:
+        raise HTTPException(404)
+    sub_id = m.submission_id
+    review.mistake_to_correct(session, m)
+    return _back(sub_id, "#correct")
+
+
+@router.post("/submissions/{sub_id}/correct/{index}/mark-wrong", dependencies=[Auth])
+def mark_correct_wrong(sub_id: int, index: int, user_answer: str = Form(""),
+                       error_type: str = Form("其他"), session: Session = Depends(get_session)):
+    sub = session.get(Submission, sub_id)
+    if not sub:
+        raise HTTPException(404)
+    m = review.correct_to_mistake(session, sub, index, user_answer, error_type, clock.now())
+    return _back(sub_id, f"#m{m.id}" if m else "")
+
+
+@router.post("/submissions/{sub_id}/answers", dependencies=[Auth])
+def add_answer(sub_id: int, question_no: str = Form(...), question: str = Form(""),
+               user_answer: str = Form(""), correct_answer: str = Form(...),
+               error_type: str = Form("其他"), session: Session = Depends(get_session)):
+    sub = session.get(Submission, sub_id)
+    if not sub:
+        raise HTTPException(404)
+    review.add_answer(session, sub, question_no, question, user_answer, correct_answer, error_type, clock.now())
+    return _back(sub_id)
 
 
 @router.get("/writing", dependencies=[Auth])

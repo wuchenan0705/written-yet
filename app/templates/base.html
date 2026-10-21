@@ -31,6 +31,7 @@ input[type=checkbox]{width:auto}
 textarea{min-height:320px}
 label{display:block;margin:8px 0 4px;font-size:.92rem}
 button,.btn{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;text-decoration:none;display:inline-block}
+button.ghost.danger{color:var(--bad)}
 button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line);padding:4px 10px}
 .tag{display:inline-block;font-size:.8rem;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
 .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
@@ -47,7 +48,7 @@ pre{white-space:pre-wrap;word-break:break-word}
 <body>
 {% if request.session.get('auth') %}
 <header><nav>
-<a href="/">🏠 今日</a><a href="/submit">📝 交題目</a><a href="/mistakes">📕 錯題本</a><a href="/writing">✍️ 寫作</a><a href="/fines">💸 罰金</a><a href="/settings">⚙️ 設定</a>
+<a href="/">🏠 今日</a><a href="/submit">📝 交題目</a><a href="/submissions">📚 已做題目</a><a href="/mistakes">📕 錯題本</a><a href="/writing">✍️ 寫作</a><a href="/fines">💸 罰金</a><a href="/settings">⚙️ 設定</a>
 </nav></header>
 {% endif %}
 <main>{% block body %}{% endblock %}</main>

@@ -27,7 +27,7 @@
 <div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span></span>
 <form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="ghost">{{ '✅ 已懂' if m.understood else '標記已懂' }}</button></form></div>
 <p><b>{{ m.question }}</b></p>
-<p>你：<span class="bad">{{ m.user_answer or '（空）' }}</span>　正解：<span class="ok">{{ m.correct_answer }}</span></p>
+<p>你：<span class="bad">{{ m.user_answer or '（未作答）' }}</span>　正解：<span class="ok">{{ m.correct_answer }}</span>　<a class="muted" href="/submissions/{{ sub.id }}#m{{ m.id }}">✏️ 修改</a></p>
 {% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
 <p>{{ m.explanation }}</p>{% if m.tip %}<p>💡 {{ m.tip }}</p>{% endif %}
 </div>{% endfor %}

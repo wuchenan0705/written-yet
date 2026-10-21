@@ -79,6 +79,43 @@ def add_progress(session: Session, st: AppSettings, day: DayRecord, skill: str, 
     return finished
 
 
+def _recheck_completion(st: AppSettings, day: DayRecord) -> None:
+    """Before settlement, completion and streak follow the corrected counts.
+    Once a day is settled its outcome stays as it was."""
+    if day.settled:
+        return
+    if day.status == "completed" and not is_complete(day):
+        day.status = "open"
+        st.streak = max(0, st.streak - 1)
+    elif day.status == "open" and is_complete(day):
+        day.status = "completed"
+        st.streak += 1
+        st.best_streak = max(st.best_streak, st.streak)
+
+
+def move_progress(session: Session, st: AppSettings, day: DayRecord, old: str, new: str) -> None:
+    """Move one finished set from skill `old` to `new` (a submission was filed under the wrong skill)."""
+    done = dict(day.done)
+    done[old] = max(0, done.get(old, 0) - 1)
+    done[new] = done.get(new, 0) + 1
+    day.done = done
+    _recheck_completion(st, day)
+    session.add(day)
+    session.add(st)
+    session.commit()
+
+
+def remove_progress(session: Session, st: AppSettings, day: DayRecord, skill: str) -> None:
+    """Take back one finished set (a submission was deleted)."""
+    done = dict(day.done)
+    done[skill] = max(0, done.get(skill, 0) - 1)
+    day.done = done
+    _recheck_completion(st, day)
+    session.add(day)
+    session.add(st)
+    session.commit()
+
+
 def compute_debt(st: AppSettings, day: DayRecord) -> dict[str, int]:
     """Shortfall carried into tomorrow, capped at goal * debt_cap in total."""
     out = {}

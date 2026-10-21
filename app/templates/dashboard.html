@@ -18,7 +18,7 @@
 <p class="muted">截止 {{ st.deadline_time }}，結算 {{ st.settle_time }}</p>
 </div>
 <div class="card">
-<h2>最近提交</h2>
+<div class="row"><h2>最近提交</h2><a class="muted" href="/submissions">全部 →</a></div>
 {% for s in recent %}
 <div class="row"><a href="/submissions/{{ s.id }}">{{ s.date }} {{ SKILL_ZH[s.skill] }}{% if s.source_label %} · {{ s.book }} {{ s.test }} {{ s.part }}{% endif %}</a>
 <span>{% if s.skill in ('listening','reading') %}{{ s.correct_count }}/{{ s.question_count }}{% elif s.result.band_estimate %}Band {{ s.result.band_estimate }}{% endif %}</span></div>
