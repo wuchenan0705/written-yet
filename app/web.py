@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from app import clock, config, images, push, review, submissions, writing_guide
 from app.db import get_session
-from app.grader import ERROR_TYPES, GradingError
+from app.grader import GradingError
 from app.logic import (
     get_or_create_day,
     get_settings,
@@ -20,7 +20,9 @@ from app.logic import (
     outstanding_fines,
     update_settings,
 )
-from app.models import SKILL_ZH, SKILLS, FineEntry, Mistake, Submission, SubmissionImage
+from app.models import (
+    ERROR_TYPES, MISTAKE_STATUSES, SKILL_ZH, SKILLS, UNGRADED, Answer, FineEntry, Submission, SubmissionImage,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -84,7 +86,7 @@ def submit_page(request: Request, skill: str = "reading"):
 @router.post("/submit", dependencies=[Auth])
 async def submit(request: Request, skill: str = Form(...), text: str = Form(""),
                  book: str = Form(""), test: str = Form(""), part: str = Form(""),
-                 files: list[UploadFile] = File(default=[]),
+                 answers: str = Form(""), files: list[UploadFile] = File(default=[]),
                  session: Session = Depends(get_session)):
     files = [f for f in files if f.filename]
     if skill not in SKILLS or not (text.strip() or files):
@@ -97,6 +99,7 @@ async def submit(request: Request, skill: str = Form(...), text: str = Form(""),
         sub, finished = await run_in_threadpool(
             submissions.process, session, skill, text.strip(), "web", clock.now(), imgs,
             book_info={"book": book, "test": test, "part": part},
+            answers=review.parse_answers(answers),
         )
     except (GradingError, images.ImageError) as e:
         return render(request, "submit.html", skill=skill, text=text, error=str(e))
@@ -115,15 +118,16 @@ def submissions_page(request: Request, skill: str = "", book: str = "", test: st
         q = q.where(Submission.book == "")
     subs = session.exec(q.limit(300)).all()
 
-    # Mistake counts per submission: total and not-yet-understood.
+    # Per submission: mistakes, mistakes not yet understood, questions not graded.
     counts: dict[int, list[int]] = {}
     if subs:
-        for m in session.exec(select(Mistake).where(Mistake.submission_id.in_([x.id for x in subs]))).all():
-            c = counts.setdefault(m.submission_id, [0, 0])
-            c[0] += 1
-            c[1] += not m.understood
+        for a in session.exec(select(Answer).where(Answer.submission_id.in_([x.id for x in subs]))).all():
+            c = counts.setdefault(a.submission_id, [0, 0, 0])
+            c[0] += a.is_mistake
+            c[1] += a.is_mistake and not a.understood
+            c[2] += a.status == UNGRADED
     if only == "open":
-        subs = [x for x in subs if counts.get(x.id, [0, 0])[1]]
+        subs = [x for x in subs if counts.get(x.id, [0, 0, 0])[1]]
 
     def options(col, **where):
         sq = select(col).distinct().where(col != "")
@@ -154,16 +158,15 @@ def submission_detail(request: Request, sub_id: int, finished: int = 0, fill_err
     sub = session.get(Submission, sub_id)
     if not sub:
         raise HTTPException(404)
-    mistakes = sorted(
-        session.exec(select(Mistake).where(Mistake.submission_id == sub_id)).all(),
-        key=lambda m: (0, int(m.question_no)) if m.question_no.isdigit() else (1, m.id),
-    )
+    rows = review.answers_of(session, sub_id)
     image_ids = session.exec(
         select(SubmissionImage.id).where(SubmissionImage.submission_id == sub_id)
     ).all()
-    return render(request, "submission.html", sub=sub, r=sub.result, mistakes=mistakes,
-                  finished=bool(finished), image_ids=image_ids, error_types=ERROR_TYPES,
-                  fill_error=fill_error)
+    return render(request, "submission.html", sub=sub, r=sub.result, finished=bool(finished),
+                  mistakes=[a for a in rows if a.is_mistake],
+                  corrects=[a for a in rows if a.status == "correct"],
+                  ungraded=[a for a in rows if a.status == UNGRADED],
+                  image_ids=image_ids, error_types=ERROR_TYPES, fill_error=fill_error)
 
 
 @router.get("/images/{image_id}", dependencies=[Auth])
@@ -178,17 +181,18 @@ def submission_image(image_id: int, session: Session = Depends(get_session)):
 def mistakes_page(request: Request, skill: str = "", book: str = "", test: str = "",
                   part: str = "", error_type: str = "", show: str = "open",
                   session: Session = Depends(get_session)):
-    q = (select(Mistake, Submission)
-         .join(Submission, Mistake.submission_id == Submission.id)
-         .order_by(Submission.id.desc(), Mistake.id))
-    filters = {Mistake.skill: skill, Submission.book: book, Submission.test: test,
-               Submission.part: part, Mistake.error_type: error_type}
+    q = (select(Answer, Submission)
+         .join(Submission, Answer.submission_id == Submission.id)
+         .where(Answer.status.in_(MISTAKE_STATUSES))
+         .order_by(Submission.id.desc()))
+    filters = {Answer.skill: skill, Submission.book: book, Submission.test: test,
+               Submission.part: part, Answer.error_type: error_type}
     for col, val in filters.items():
         if val:
             q = q.where(col == val)
     if show == "open":
-        q = q.where(Mistake.understood == False)  # noqa: E712
-    rows = session.exec(q.limit(500)).all()
+        q = q.where(Answer.understood == False)  # noqa: E712
+    rows = sorted(session.exec(q.limit(500)).all(), key=lambda r: (-r[1].id, review.sort_key(r[0])))
 
     # One card per passage/section so mistakes from different sets don't blur together.
     groups: dict[int, dict] = {}
@@ -197,8 +201,8 @@ def mistakes_page(request: Request, skill: str = "", book: str = "", test: str =
         g["items"].append(m)
 
     open_rows = session.exec(
-        select(Mistake, Submission).join(Submission, Mistake.submission_id == Submission.id)
-        .where(Mistake.understood == False)  # noqa: E712
+        select(Answer, Submission).join(Submission, Answer.submission_id == Submission.id)
+        .where(Answer.status.in_(MISTAKE_STATUSES), Answer.understood == False)  # noqa: E712
     ).all()
     stats = Counter(m.error_type for m, _ in open_rows).most_common()
     book_stats = Counter(sub.book or "未分類" for _, sub in open_rows).most_common()
@@ -221,7 +225,7 @@ def mistakes_page(request: Request, skill: str = "", book: str = "", test: str =
 
 @router.post("/mistakes/{mid}/toggle", dependencies=[Auth])
 def toggle_mistake(request: Request, mid: int, session: Session = Depends(get_session)):
-    m = session.get(Mistake, mid)
+    m = session.get(Answer, mid)
     if m:
         m.understood = not m.understood
         session.add(m)
@@ -229,8 +233,9 @@ def toggle_mistake(request: Request, mid: int, session: Session = Depends(get_se
     return RedirectResponse(request.headers.get("referer") or "/mistakes", 303)
 
 
-def _back(sub_id: int, anchor: str = "") -> RedirectResponse:
-    return RedirectResponse(f"/submissions/{sub_id}{anchor}", 303)
+def _back(sub_id: int, anchor: str = "", error: str = "") -> RedirectResponse:
+    query = f"?fill_error={quote(error)}" if error else ""
+    return RedirectResponse(f"/submissions/{sub_id}{query}{anchor}", 303)
 
 
 @router.post("/submissions/{sub_id}/info", dependencies=[Auth])
@@ -246,32 +251,34 @@ def change_submission_info(sub_id: int, skill: str = Form(...), book: str = Form
 
 @router.post("/mistakes/{mid}/edit", dependencies=[Auth])
 async def edit_mistake(request: Request, mid: int, session: Session = Depends(get_session)):
-    m = session.get(Mistake, mid)
-    if not m:
+    a = session.get(Answer, mid)
+    if not a:
         raise HTTPException(404)
-    sub_id = m.submission_id
-    moved = review.edit_mistake(session, m, dict(await request.form()))
-    return _back(sub_id, "#correct" if moved else f"#m{mid}")
+    try:
+        status = review.edit_answer(session, a, dict(await request.form()))
+    except ValueError as e:
+        session.rollback()
+        return _back(a.submission_id, f"#m{mid}", error=str(e))
+    return _back(a.submission_id, "#correct" if status == "correct" else f"#m{mid}")
 
 
 @router.post("/mistakes/{mid}/mark-correct", dependencies=[Auth])
 def mark_mistake_correct(mid: int, session: Session = Depends(get_session)):
-    m = session.get(Mistake, mid)
-    if not m:
+    a = session.get(Answer, mid)
+    if not a:
         raise HTTPException(404)
-    sub_id = m.submission_id
-    review.mistake_to_correct(session, m)
-    return _back(sub_id, "#correct")
+    review.mark_correct(session, a)
+    return _back(a.submission_id, "#correct")
 
 
-@router.post("/submissions/{sub_id}/correct/{index}/mark-wrong", dependencies=[Auth])
-def mark_correct_wrong(sub_id: int, index: int, user_answer: str = Form(""),
-                       error_type: str = Form("其他"), session: Session = Depends(get_session)):
-    sub = session.get(Submission, sub_id)
-    if not sub:
+@router.post("/mistakes/{mid}/mark-wrong", dependencies=[Auth])
+def mark_answer_wrong(mid: int, user_answer: str = Form(""), error_type: str = Form("其他"),
+                      session: Session = Depends(get_session)):
+    a = session.get(Answer, mid)
+    if not a:
         raise HTTPException(404)
-    m = review.correct_to_mistake(session, sub, index, user_answer, error_type, clock.now())
-    return _back(sub_id, f"#m{m.id}" if m else "")
+    review.mark_wrong(session, a, user_answer, error_type)
+    return _back(a.submission_id, f"#m{mid}")
 
 
 @router.post("/submissions/{sub_id}/answers", dependencies=[Auth])
@@ -286,11 +293,8 @@ async def fill_answers(request: Request, sub_id: int, session: Session = Depends
     quick = dict(review.parse_answers(form.get("quick", "")))
     answers = [(no, quick.pop(no.strip(), user), correct) for no, user, correct in answers]
     answers += [(no, user, "") for no, user in quick.items()]
-    try:
-        await run_in_threadpool(review.fill_answers, session, sub, answers, clock.now())
-    except GradingError as e:
-        return RedirectResponse(f"/submissions/{sub_id}?fill_error={quote(str(e))}#add", 303)
-    return _back(sub_id)
+    res = await run_in_threadpool(review.fill_answers, session, sub, answers, clock.now())
+    return _back(sub_id, "#add" if res.warning else "", error=res.warning)
 
 
 @router.get("/writing", dependencies=[Auth])

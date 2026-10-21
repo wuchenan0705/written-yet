@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 
 from app import push
 from app.logic import carried_debt, compute_debt, is_complete, outstanding_fines, parse_hhmm, totals
-from app.models import SKILL_ZH, AppSettings, DayRecord, FineEntry, Mistake, Submission
+from app.models import MISTAKE_STATUSES, SKILL_ZH, AppSettings, Answer, DayRecord, FineEntry, Submission
 
 BOMB_LINES = [
     "⏰ 已經過截止時間了，今天的雅思還沒做完！",
@@ -83,8 +83,8 @@ def weekly_report(session: Session, end_str: str) -> str:
         select(Submission).where(Submission.date >= start_str, Submission.date <= end_str)
     ).all()
     mistakes = session.exec(
-        select(Mistake).join(Submission, Mistake.submission_id == Submission.id).where(
-            Submission.date >= start_str, Submission.date <= end_str
+        select(Answer).join(Submission, Answer.submission_id == Submission.id).where(
+            Submission.date >= start_str, Submission.date <= end_str, Answer.status.in_(MISTAKE_STATUSES)
         )
     ).all()
     completed = sum(d.status == "completed" for d in days)

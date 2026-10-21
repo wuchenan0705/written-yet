@@ -6,24 +6,22 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlmodel import Session, select
 
-from app import images, line_bot, submissions
+from app import images, line_bot, review, submissions
 from app.db import engine, init_db
 from app.line_bot import parse_command
 from app.logic import get_settings
 from app.main import app
-from app.models import DraftImage, Mistake, Submission, SubmissionImage
+from app.models import CORRECT, UNGRADED, WRONG, Answer, DraftImage, Submission, SubmissionImage
+from tests.fakes import explainer, q, result
 
-FAKE = {
-    "question_count": 3, "correct_count": 2, "summary": "不錯",
-    "source": {"book": "C21", "test": "Test 1", "part": "Passage 3", "title": "A Short History of Tea"},
-    "correct_items": [{"question_no": "38", "question": "Tea was first grown commercially in Europe.",
-                       "answer": "NOT GIVEN", "note": "原文只提到亞洲產地", "evidence": ""}],
-    "mistakes": [{"question_no": "37", "question": "Q2", "user_answer": "FALSE", "correct_answer": "NOT GIVEN",
-                  "error_type": "NOT GIVEN/FALSE 混淆", "explanation": "原文沒提到",
-                  "evidence": "", "tip": "找不到就是 NG"}],
-    "band_estimate": "", "criteria": [], "corrections": [], "improved_version": "",
-    "missing_answers": ["27", "28"],
-}
+FAKE = result([
+    q("27", "choice", visible=False, key="B", explanation="（教練判斷）…"),
+    q("28", "choice", visible=False, key="C", explanation="（教練判斷）…"),
+    q("37", "tfng", user="FALSE", key="NOT GIVEN", error_type="NOT GIVEN/FALSE 混淆", explanation="原文沒提到"),
+    q("38", "tfng", user="NG", key="NOT GIVEN", note="原文只提到亞洲產地"),
+    q("39", "fill", user="china", key="China"),
+], first=27, last=39, summary="不錯",
+    source={"book": "C21", "test": "Test 1", "part": "Passage 3", "title": "A Short History of Tea"})
 
 
 def png(w=3000, h=1800) -> bytes:
@@ -61,14 +59,19 @@ def test_process_submission_counts_sets_and_keeps_images(session):
     calls = []
     imgs = [("image/png", b"x")]
     sub, finished = submissions.process(session, "reading", "", "web", now, imgs, fake_grade(calls))
-    assert not finished and sub.correct_count == 2  # 3 questions still count as one set
+    assert not finished and (sub.correct_count, sub.question_count) == (2, 3)  # still one set
     assert calls[0][2] == imgs
     assert session.exec(select(SubmissionImage)).one().submission_id == sub.id
-    assert session.get(Mistake, 1).error_type == "NOT GIVEN/FALSE 混淆"
-    sub, finished = submissions.process(session, "reading", "t", "web", now, (), fake_grade(calls))
-    assert finished
+    m = session.exec(select(Answer).where(Answer.question_no == "37")).first()
+    assert (m.status, m.error_type) == (WRONG, "NOT GIVEN/FALSE 混淆")
+    sub, finished = submissions.process(session, "reading", "t", "web", now, (), fake_grade(calls),
+                                        answers=[("27", "B"), ("28", "A")], explain_fn=explainer()[0])
+    assert finished and (sub.correct_count, sub.question_count) == (3, 5)
+    assert "我的答案：27 B 28 A" in calls[-1][1]  # Claude sees the typed answers too
     summary = submissions.line_summary(session, sub, finished)
-    assert "2/3" in summary and "27、28" in summary and "今日目標全部完成" in summary
+    assert "3/5" in summary and "看不到你的答案" not in summary and "今日目標全部完成" in summary
+    sub, _ = submissions.process(session, "reading", "", "web", now, (), fake_grade(calls))
+    assert "第 27、28 題看不到你的答案" in submissions.line_summary(session, sub, False)
 
 
 def test_web_login_and_pages(monkeypatch):
@@ -89,7 +92,9 @@ def test_web_login_and_pages(monkeypatch):
         assert c.get(f"/images/{img_src}").headers["content-type"] == "image/png"
         assert "看不懂這個檔案" in c.post("/submit", data={"skill": "reading"},
                                        files=[("files", ("x.png", b"nope", "image/png"))]).text
-        assert "答對的題目（1）" in r.text and "原文只提到亞洲產地" in r.text
+        assert "答對的題目（2）" in r.text and "原文只提到亞洲產地" in r.text
+        r = c.post("/submit", data={"skill": "reading", "text": "x", "answers": "27B 28 c"})
+        assert "找不到你在第" not in r.text and "答對的題目（4）" in r.text
         assert "C21 Test 1 Passage 3｜A Short History of Tea" in r.text
 
         # Typed source overrides what was detected.
@@ -164,6 +169,7 @@ def test_line_screenshots_then_submit(monkeypatch):
     line_bot.handle_event(submit)
     assert len(calls[-1][2]) == 2 and calls[-1][1] == ""
     assert "2/3 題正確" in fake.replies[-1] and "📖 C21 Test 1 Passage 3" in fake.replies[-1]
+    assert "第 27、28 題看不到你的答案" in fake.replies[-1]
     with Session(engine) as s:
         assert s.exec(select(DraftImage)).all() == []
         assert s.exec(select(Submission).where(Submission.source == "line")).first()
@@ -193,24 +199,30 @@ def test_writing_guide_page_and_line_lookup():
 
 
 def test_line_fill_command(monkeypatch):
-    from app import review
-
     init_db()
     with Session(engine) as s:
         sub = Submission(created_at=datetime(2026, 10, 21, 9), date="2026-10-21", skill="reading", source="web",
-                         raw_text="passage", question_count=1, correct_count=1, book="C9",
-                         result={"missing_answers": ["37", "38"], "correct_items": []})
+                         raw_text="passage", book="C9", result={})
         s.add(sub)
         s.commit()
         s.refresh(sub)
+        for no, status, key in (("36", CORRECT, "YES"), ("37", UNGRADED, "NO"), ("38", UNGRADED, "FALSE")):
+            s.add(Answer(submission_id=sub.id, skill="reading", created_at=sub.created_at, question_no=no,
+                         kind="tfng", accepted=[key], status=status, user_answer=key if status == CORRECT else ""))
+        s.commit()
+        review.recount(s, sub)
+        s.commit()
+        # A newer submission without these question numbers must not receive the answers.
+        s.add(Submission(created_at=datetime(2026, 10, 21, 10), date="2026-10-21", skill="listening",
+                         source="web", raw_text="", result={}))
+        s.commit()
 
-        def grade(skill, text, imgs, answers):
-            assert text == "passage" and answers == [("37", "NO", ""), ("38", "NG", "")]
-            return {"correct_items": [{"question_no": "37", "question": "", "answer": "NO", "note": "", "evidence": ""}],
-                    "mistakes": [{"question_no": "38", "question": "", "user_answer": "NOT GIVEN", "correct_answer": "FALSE",
-                                  "error_type": "NOT GIVEN/FALSE 混淆", "explanation": "", "evidence": "", "tip": ""}]}
-        monkeypatch.setattr(review.grader, "grade_answers", grade)
+        explain, calls = explainer()
+        monkeypatch.setattr(review.grader, "explain", explain)
         assert parse_command("補 37 NO 38 NG") == ("補", None, "37 NO 38 NG")
         text = line_bot.fill_from_line(s, FakeLine(), "OWNER", "37 NO 38 NG")
         assert "補批 2 題，答對 1 題" in text and "2/3" in text and f"/submissions/{sub.id}" in text
+        assert [x["question_no"] for x in calls[0]] == ["38"]  # only the wrong answer needs Claude
+        assert "還沒計分" not in text
         assert "格式：補" in line_bot.fill_from_line(s, FakeLine(), "OWNER", "")
+        assert "找不到第 99 題" in line_bot.fill_from_line(s, FakeLine(), "OWNER", "99 A")

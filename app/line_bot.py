@@ -31,7 +31,7 @@ from app import clock, config, images, push, review, submissions, writing_guide
 from app.db import engine
 from app.grader import GradingError
 from app.logic import get_or_create_day, get_settings, outstanding_fines, progress_text, use_leave
-from app.models import SKILL_ZH, DraftImage, Mistake, Submission
+from app.models import MISTAKE_STATUSES, OBJECTIVE_SKILLS, SKILL_ZH, UNGRADED, Answer, DraftImage, Submission
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -48,7 +48,7 @@ HELP = f"""📘 指令
 進度｜今天的進度與連續天數
 先傳雅思哥檢討頁截圖，再傳「交 閱讀」｜批改一篇（聽力/閱讀/寫作/口說）
 交 閱讀 ＋換行＋文字｜也可以直接貼文字，或文字＋截圖一起
-補 37 NO 38 NG｜補上最近一份沒判斷到的答案，交給教練批改
+補 37 NO 38 NG｜補上最近一份有這些題號的提交的答案（勾選沒複製到、漏批的題目）
 清除｜丟掉還沒交的截圖
 寫作｜寫作題型與工具書
 連接詞 對比｜查某類連接詞（補充/對比/原因/結果/舉例/讓步/強調/順序/條件/換句話說/立場/結論）
@@ -158,26 +158,39 @@ def parse_command(text: str) -> tuple[str, Optional[str], str]:
     return "", None, text
 
 
+def fill_target(session: Session, nos: list[str]) -> Optional[Submission]:
+    """The latest listening/reading submission that has all these question numbers,
+    preferring one that still has ungraded questions."""
+    subs = session.exec(select(Submission).where(Submission.skill.in_(OBJECTIVE_SKILLS))
+                        .order_by(Submission.id.desc()).limit(20)).all()
+    matches = []
+    for sub in subs:
+        rows = {a.question_no: a for a in review.answers_of(session, sub.id)}
+        if all(no in rows for no in nos):
+            matches.append((sub, any(rows[no].status == UNGRADED for no in nos)))
+    return next((sub for sub, open_ in matches if open_), matches[0][0] if matches else None)
+
+
 def fill_from_line(session: Session, t: "LineTransport", user_id: str, body: str) -> str:
-    """補 27A 28 NG — grade answers for the latest submission that still has missing ones."""
+    """補 27A 28 NG — answer questions of the latest submission that has these numbers."""
     answers = review.parse_answers(body)
     if not answers:
-        return "格式：補 37 NO 38 NG 39 YES（或 27A 28C）\n會補到最近一份還有題目沒計分的提交。"
-    subs = session.exec(select(Submission).order_by(Submission.id.desc()).limit(20)).all()
-    target = next((x for x in subs if x.result.get("missing_answers")), subs[0] if subs else None)
+        return "格式：補 37 NO 38 NG 39 YES（或 27A 28C）\n會補到最近一份有這些題號的提交。"
+    nos = [review.clean_no(no) for no, _ in answers]
+    target = fill_target(session, nos)
     if target is None:
-        return "還沒有任何提交可以補。"
+        return f"最近 20 份聽力/閱讀都找不到第 {'、'.join(nos)} 題，請到網頁的提交頁面補。"
     t.loading(user_id)
-    try:
-        graded, correct = review.fill_answers(session, target, [(no, a, "") for no, a in answers], clock.now())
-    except GradingError as e:
-        return f"⚠️ 批改失敗：{e}"
+    res = review.fill_answers(session, target, [(no, a, "") for no, a in answers], clock.now())
     session.refresh(target)
     lines = [f"✍️ {target.source_label or SKILL_ZH[target.skill]}",
-             f"補批 {graded} 題，答對 {correct} 題",
+             f"補批 {res.graded} 題，答對 {res.correct} 題",
              f"這份目前 {target.correct_count}/{target.question_count}"]
-    if target.result.get("missing_answers"):
-        lines.append(f"還沒計分：第 {'、'.join(target.result['missing_answers'])} 題")
+    left = [a.question_no for a in review.answers_of(session, target.id) if a.status == UNGRADED]
+    if left:
+        lines.append(f"還沒計分：第 {'、'.join(left)} 題")
+    if res.warning:
+        lines.append(f"⚠️ {res.warning}")
     lines.append(f"解析：{config.BASE_URL}/submissions/{target.id}")
     return "\n".join(lines)
 
@@ -298,9 +311,9 @@ def handle_event(ev) -> None:
             t.reply(ev.reply_token, f"💸 未付罰金：{outstanding_fines(session)}（{st.fine_note}）\n付款後到網頁標記已付。")
         elif cmd == "錯題":
             rows = session.exec(
-                select(Mistake, Submission).join(Submission, Mistake.submission_id == Submission.id)
-                .where(Mistake.understood == False)  # noqa: E712
-                .order_by(Mistake.id.desc()).limit(5)
+                select(Answer, Submission).join(Submission, Answer.submission_id == Submission.id)
+                .where(Answer.status.in_(MISTAKE_STATUSES), Answer.understood == False)  # noqa: E712
+                .order_by(Submission.id.desc(), Answer.id.desc()).limit(5)
             ).all()
             if not rows:
                 t.reply(ev.reply_token, "🎉 目前沒有待複習的錯題。")
@@ -308,7 +321,7 @@ def handle_event(ev) -> None:
                 parts = [
                     f"【{sub.source_label or SKILL_ZH[m.skill]}"
                     f"{' Q' + m.question_no if m.question_no else ''}｜{m.error_type}】{m.question[:80]}\n"
-                    f"你：{m.user_answer} → 正解：{m.correct_answer}\n💡 {m.tip}"
+                    f"你：{m.show(m.user_answer) or '（未作答）'} → 正解：{m.key_text}\n💡 {m.tip}"
                     for m, sub in rows
                 ]
                 t.reply(ev.reply_token, "\n\n".join(parts) + f"\n\n更多：{config.BASE_URL}/mistakes")

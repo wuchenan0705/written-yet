@@ -15,60 +15,51 @@
 </form></details>
 {% if r.summary %}<div class="card">{{ r.summary }}</div>{% endif %}
 {% if r.edited %}<p class="muted">✏️ 這份批改有手動修正過。</p>{% endif %}
-{% if r.missing_answers %}<div class="notice warn">⚠️ 找不到你在第 {{ r.missing_answers|join('、') }} 題的答案，這些題還沒計分。在下面「補答案」填上就會批改。</div>{% endif %}
+{% if fill_error %}<div class="notice bad">{{ fill_error }}</div>{% endif %}
+{% if ungraded %}<div class="notice warn">⚠️ 找不到你在第 {% for a in ungraded %}{{ a.question_no }}{{ '、' if not loop.last }}{% endfor %} 題的答案，這些題還沒計分。在下面「補答案」填上就會批改。</div>{% endif %}
 
 {% if mistakes %}<div class="card"><h2>錯題解析（{{ mistakes|length }}）</h2>
 {% for m in mistakes %}<div class="mistake" id="m{{ m.id }}">
-<div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span></span>
+<div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span>{% if m.key_source == 'coach' %} <span class="tag" title="頁面上沒有正解，由教練解題">教練判斷</span>{% endif %}</span>
 <span class="actions">
-<form method="post" action="/mistakes/{{ m.id }}/mark-correct"><button class="ghost" title="Claude 看錯了，這題其實答對">其實答對了</button></form>
+<form method="post" action="/mistakes/{{ m.id }}/mark-correct"><button class="ghost" title="其實答對了：以後這個答案也算對">其實答對了</button></form>
 <form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="ghost">{{ '✅ 已懂' if m.understood else '標記已懂' }}</button></form>
 </span></div>
-<p><b>{{ m.question }}</b></p>
-<p>你的答案：<span class="bad">{{ m.user_answer or '（未作答）' }}</span>　正解：<span class="ok">{{ m.correct_answer }}</span></p>
+{% if m.question %}<p><b>{{ m.question }}</b></p>{% endif %}
+<p>你的答案：<span class="bad">{{ m.show(m.user_answer) or '（未作答）' }}</span>　正解：<span class="ok">{{ m.key_text or '（還沒有正解）' }}</span></p>
 {% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
-<p>{{ m.explanation }}</p>
+{% if m.explanation %}<p>{{ m.explanation }}</p>{% endif %}
 {% if m.tip %}<p>💡 {{ m.tip }}</p>{% endif %}
-<details class="edit"><summary>✏️ 修改這題</summary>
-<form method="post" action="/mistakes/{{ m.id }}/edit" class="editgrid">
-<div><label>題號</label><input name="question_no" value="{{ m.question_no }}"></div>
-<div><label>你的答案（空白 = 未作答）</label><input name="user_answer" value="{{ m.user_answer }}"></div>
-<div><label>正確答案</label><input name="correct_answer" value="{{ m.correct_answer }}"></div>
-<div><label>錯誤類型</label><select name="error_type">{% for t in error_types %}<option {{ 'selected' if t == m.error_type }}>{{ t }}</option>{% endfor %}</select></div>
-<div class="wide"><label>題目</label><input name="question" value="{{ m.question }}"></div>
-<div class="wide"><label>解析</label><textarea name="explanation" rows="3">{{ m.explanation }}</textarea></div>
-<div class="wide"><button>儲存</button> <span class="muted">你的答案改成和正解一樣，會自動移到答對。</span></div>
-</form></details>
+{% set edit = m %}{% include "_edit_answer.html" %}
 </div>{% endfor %}</div>
-{% elif sub.skill in ('listening','reading') and r.correct_items %}<div class="card ok">全對，太強了 💯</div>{% endif %}
+{% elif sub.skill in ('listening','reading') and corrects and not ungraded %}<div class="card ok">全對，太強了 💯</div>{% endif %}
 
-{% if r.correct_items %}<details class="card" id="correct" {{ 'open' if not mistakes }}><summary><b>✅ 答對的題目（{{ r.correct_items|length }}）</b></summary>
-{% for c in r.correct_items %}<div class="mistake">
+{% if corrects %}<details class="card" id="correct" {{ 'open' if not mistakes }}><summary><b>✅ 答對的題目（{{ corrects|length }}）</b></summary>
+{% for c in corrects %}<div class="mistake" id="m{{ c.id }}">
 <p>{% if c.question_no %}<b>Q{{ c.question_no }}</b> {% endif %}{{ c.question }}</p>
-<p>答案：<span class="ok">{{ c.answer }}</span></p>
+<p>答案：<span class="ok">{{ c.show(c.user_answer) or c.key_text }}</span>{% if c.accepted|length > 1 %}　<span class="muted">（可接受：{{ c.key_text }}）</span>{% endif %}</p>
 {% if c.evidence %}<blockquote>{{ c.evidence }}</blockquote>{% endif %}
 {% if c.note %}<p class="muted">🔑 {{ c.note }}</p>{% endif %}
 <details class="edit"><summary>其實答錯了</summary>
-<form method="post" action="/submissions/{{ sub.id }}/correct/{{ loop.index0 }}/mark-wrong" class="editgrid">
-<div><label>你實際的答案（空白 = 未作答）</label><input name="user_answer"></div>
-<div><label>錯誤類型</label><select name="error_type">{% for t in error_types %}<option>{{ t }}</option>{% endfor %}</select></div>
+<form method="post" action="/mistakes/{{ c.id }}/mark-wrong" class="editgrid">
+<div><label>你實際的答案（空白 = 未作答）</label><input name="user_answer" value="{{ c.user_answer }}"></div>
+<div><label>錯誤類型</label><select name="error_type">{% for t in error_types if t != '未作答' %}<option {{ 'selected' if t == '其他' }}>{{ t }}</option>{% endfor %}</select></div>
 <div class="wide"><button>移到錯題</button></div>
 </form></details>
 </div>{% endfor %}</details>{% endif %}
 
 {% if sub.skill in ('listening','reading') %}
-<details class="card" id="add" {{ 'open' if r.missing_answers or fill_error }}><summary><b>＋ 補答案，交給教練批改</b> <span class="muted">選擇題勾選沒複製到、漏批的題目</span></summary>
-{% if fill_error %}<div class="notice bad">批改失敗：{{ fill_error }}</div>{% endif %}
+<details class="card" id="add" {{ 'open' if ungraded or fill_error }}><summary><b>＋ 補答案</b> <span class="muted">選擇題勾選沒複製到、漏批的題目，或重新作答</span></summary>
 <form method="post" action="/submissions/{{ sub.id }}/answers" id="fillform">
 <table class="fill">
 <tr><th>題號</th><th>你的答案</th><th>正解（可空白）</th></tr>
-{% for q in r.missing_answers %}<tr><td><input name="no" value="{{ q }}" readonly></td><td><input name="user" placeholder="例如 NG / B"></td><td><input name="correct"></td></tr>{% endfor %}
-{% for _ in range(2 if r.missing_answers else 3) %}<tr><td><input name="no" placeholder="題號" inputmode="numeric"></td><td><input name="user"></td><td><input name="correct"></td></tr>{% endfor %}
+{% for a in ungraded %}<tr><td><input name="no" value="{{ a.question_no }}" readonly></td><td><input name="user" placeholder="{{ 'A / B / C' if a.kind in ('choice','matching','multi') else ('NG / YES / FALSE' if a.kind == 'tfng' else '') }}"></td><td><input name="correct"></td></tr>{% endfor %}
+{% for _ in range(2 if ungraded else 3) %}<tr><td><input name="no" placeholder="題號" inputmode="numeric"></td><td><input name="user"></td><td><input name="correct"></td></tr>{% endfor %}
 </table>
 <label>或一次貼上（會覆蓋上面同題號的答案）</label>
 <input name="quick" placeholder="27A 28C 29B 37 NO 38 NG 39 YES">
-<p class="muted">教練會回頭看原本的文章和截圖，判斷對錯、分類錯誤並寫解析。已經批過的題號再補一次會重新批改。</p>
-<button id="fillgo">送出批改</button>
+<p class="muted">已經有正解的題目會直接比對；答錯或沒有正解的才請教練看原文寫解析。選擇題打字母就好。</p>
+<button id="fillgo">送出</button>
 </form></details>
 {% endif %}
 

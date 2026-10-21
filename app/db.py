@@ -32,10 +32,12 @@ def _add_missing_columns() -> None:
 
 
 def init_db() -> None:
-    from app import models  # noqa: F401  register tables
+    from app import migrate, models  # noqa: F401  register tables
 
     SQLModel.metadata.create_all(engine)
     _add_missing_columns()
+    with Session(engine) as session:
+        migrate.migrate_answers(session)
 
 
 def get_session():

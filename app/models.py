@@ -1,11 +1,27 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Column, LargeBinary
+from sqlalchemy import JSON, Column, LargeBinary, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 SKILLS = ("listening", "reading", "writing", "speaking")
 SKILL_ZH = {"listening": "聽力", "reading": "閱讀", "writing": "寫作", "speaking": "口說"}
+# Skills graded question by question (Answer rows); writing/speaking get a band estimate instead.
+OBJECTIVE_SKILLS = ("listening", "reading")
+
+# Answer.kind: fill = write words/numbers, choice = single letter, matching = letter from a
+# shared box, tfng = TRUE/FALSE/NOT GIVEN or YES/NO/NOT GIVEN, multi = "choose TWO" set.
+ANSWER_KINDS = ("fill", "choice", "matching", "tfng", "multi")
+OPTION_KINDS = ("choice", "matching", "multi")  # answers stored as letters
+# Answer.status
+CORRECT, WRONG, BLANK, UNGRADED = "correct", "wrong", "blank", "ungraded"
+MISTAKE_STATUSES = (WRONG, BLANK)
+
+UNANSWERED = "未作答"  # the error type of every blank answer, and only of blank answers
+ERROR_TYPES = [
+    UNANSWERED, "同義替換沒認出", "NOT GIVEN/FALSE 混淆", "定位錯誤", "細節漏看", "拼字錯誤",
+    "單複數/詞形", "字數限制", "數字/日期", "詞彙不認識", "推論/邏輯", "文法", "其他",
+]
 # Goals are counted in sets: one submission = one passage / section / essay / speaking part.
 DEFAULT_GOALS = {"listening": 1, "reading": 1, "writing": 1, "speaking": 1}
 
@@ -90,7 +106,50 @@ class Submission(SQLModel, table=True):
         return f"{label}｜{self.title}" if label and self.title else (label or self.title)
 
 
+class Answer(SQLModel, table=True):
+    """One question of a listening/reading set: the only record of per-question results.
+
+    Submission.question_count / correct_count are recomputed from these rows
+    (review.recount) and never adjusted by hand.
+    """
+    __table_args__ = (UniqueConstraint("submission_id", "question_no"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    submission_id: int = Field(index=True)
+    skill: str
+    created_at: datetime
+    question_no: str
+    kind: str = "fill"
+    group_nos: str = ""  # "25-26" for a choose-TWO set, scored order-free
+    question: str = ""
+    options: dict = json_field()  # {"A": "competitors nearby", ...}
+    user_answer: str = ""  # "" = unanswered; a letter for option kinds
+    accepted: list = json_field(list)  # acceptable answers, letters for option kinds
+    key_source: str = "page"  # page (answer key shown) / coach (Claude solved it) / user
+    status: str = UNGRADED
+    error_type: str = ""  # set only for wrong / blank
+    verdict_by: str = "auto"  # auto (judge.py) / manual (user overrode it)
+    note: str = ""
+    explanation: str = ""
+    evidence: str = ""
+    tip: str = ""
+    understood: bool = False
+
+    @property
+    def is_mistake(self) -> bool:
+        return self.status in MISTAKE_STATUSES
+
+    def show(self, value: str) -> str:
+        """A letter answer with its option text, e.g. 'B involve more children in need'."""
+        text = self.options.get(value, "") if self.kind in OPTION_KINDS else ""
+        return f"{value} {text}" if text else value
+
+    @property
+    def key_text(self) -> str:
+        return " / ".join(self.show(k) for k in self.accepted)
+
+
 class Mistake(SQLModel, table=True):
+    """Legacy per-question table, replaced by Answer (see migrate.py). Kept for old databases."""
     id: Optional[int] = Field(default=None, primary_key=True)
     submission_id: int = Field(index=True)
     created_at: datetime

@@ -24,6 +24,16 @@ class FakeTransport:
         return self.members
 
 
+@pytest.fixture(autouse=True)
+def no_claude_api(monkeypatch):
+    """Tests must pass fakes; reaching the real API is a bug in the test."""
+    from app import grader
+
+    def refuse(*a, **k):
+        raise AssertionError("test tried to call the Claude API")
+    monkeypatch.setattr(grader, "_call", refuse)
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
