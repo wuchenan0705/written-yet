@@ -43,14 +43,23 @@ def practice_date(st: AppSettings, now: datetime) -> str:
     return (now - timedelta(minutes=day_start(st))).date().isoformat()
 
 
-def day_minute(st: AppSettings, now: datetime) -> int:
-    """Minutes since midnight at the start of now's practice day (01:00 the next day = 1500)."""
-    start = datetime.combine(date.fromisoformat(practice_date(st, now)), time())
-    return int((now - start).total_seconds() // 60)
+def current_date(session: Session, st: AppSettings, now: datetime) -> str:
+    """practice_date, but never a day that is already settled: after switching settlement to
+    the next morning, last night's already-settled day must not reopen."""
+    day_str = practice_date(st, now)
+    day = session.get(DayRecord, day_str)
+    if day and day.settled and day_str < now.date().isoformat():
+        return now.date().isoformat()
+    return day_str
+
+
+def minute_in_day(day_str: str, now: datetime) -> int:
+    """Minutes from midnight at the start of day_str to now."""
+    return int((now - datetime.combine(date.fromisoformat(day_str), time())).total_seconds() // 60)
 
 
 def setting_minute(st: AppSettings, field: str) -> int:
-    """A time setting on the same scale as day_minute."""
+    """A time setting as minutes from midnight at the start of its practice day (next morning = +1440)."""
     next_day = {"deadline_time": st.deadline_next_day, "settle_time": st.settle_next_day}.get(field, False)
     return _minutes(parse_hhmm(getattr(st, field))) + (DAY_MINUTES if next_day else 0)
 

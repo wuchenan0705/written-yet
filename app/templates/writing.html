@@ -1,12 +1,12 @@
 {% extends "base.html" %}{% block body %}
-<h1>✍️ 雅思寫作工具書 <span class="tag">Academic</span></h1>
-<nav class="toc card">
+<h1>寫作工具書 <span class="tag">Academic</span></h1>
+<nav class="toc sheet">
   <a href="#overview">考試概要</a><a href="#task1">Task 1 題型</a><a href="#t1lang">Task 1 數據用語</a>
   <a href="#task2">Task 2 題型</a><a href="#connectors">連接詞</a><a href="#pitfalls">連接詞常錯</a>
   <a href="#templates">實用句型</a><a href="#mistakes">常見扣分</a>
 </nav>
 
-<section id="overview" class="card">
+<section id="overview" class="sheet">
 <h2>考試概要</h2>
 <div class="grid">{% for t in g.OVERVIEW.tasks %}
 <div class="sub"><b>{{ t.name }}</b><p class="muted">{{ t.time }} · {{ t.words }} · {{ t.weight }}</p><p>{{ t.what }}</p></div>{% endfor %}
@@ -18,7 +18,7 @@
 <table>{% for k, v in g.TIME_PLAN %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
 </section>
 
-<section id="task1" class="card">
+<section id="task1" class="sheet">
 <h2>Task 1 題型（{{ g.TASK1_TYPES|length }} 種）</h2>
 <p class="muted">共通結構：改寫題目 → Overview（最重要！）→ 兩段細節。</p>
 {% for t in g.TASK1_TYPES %}
@@ -29,7 +29,7 @@
 </details>{% endfor %}
 </section>
 
-<section id="t1lang" class="card">
+<section id="t1lang" class="sheet">
 <h2>Task 1 數據用語</h2>
 <div class="grid">{% for blk in g.TASK1_LANGUAGE %}
 <div class="sub"><b>{{ blk.title }}</b><ul>{% for i in blk['items'] %}<li>{{ i }}</li>{% endfor %}</ul></div>{% endfor %}
@@ -37,7 +37,7 @@
 <p class="muted">名詞與動詞兩種寫法都要會：<i>Sales rose sharply.</i> = <i>There was a sharp rise in sales.</i></p>
 </section>
 
-<section id="task2" class="card">
+<section id="task2" class="sheet">
 <h2>Task 2 題型（{{ g.TASK2_TYPES|length }} 種）</h2>
 <p class="muted">先看題目最後一句判斷題型，每種題型要回答的東西不一樣。</p>
 {% for t in g.TASK2_TYPES %}
@@ -49,7 +49,7 @@
 </details>{% endfor %}
 </section>
 
-<section id="connectors" class="card">
+<section id="connectors" class="sheet">
 <h2>常用連接詞</h2>
 <input id="q" type="search" placeholder="搜尋，例如 however、原因、despite…" autocomplete="off">
 <p class="muted">注意詞性：<b>副詞</b>（However, …）放句首加逗號；<b>連接詞</b>（although / whereas + 子句）連接兩個子句；<b>介系詞</b>（despite / due to + 名詞）後面不能接完整句子。</p>
@@ -63,33 +63,33 @@
 <p id="none" class="muted" hidden>找不到符合的連接詞。</p>
 </section>
 
-<section id="pitfalls" class="card">
+<section id="pitfalls" class="sheet">
 <h2>連接詞常見錯誤</h2>
 <table>{% for wrong, fix in g.CONNECTOR_PITFALLS %}<tr><th class="bad">✗ {{ wrong }}</th><td>{{ fix }}</td></tr>{% endfor %}</table>
 </section>
 
-<section id="templates" class="card">
+<section id="templates" class="sheet">
 <h2>實用句型</h2>
 <p class="muted">當骨架參考就好，內容要自己寫；整段背模板反而會被看出來。</p>
 {% for blk in g.TEMPLATES %}<h3>{{ blk.title }}</h3><ul>{% for i in blk['items'] %}<li>{{ i }}</li>{% endfor %}</ul>{% endfor %}
 </section>
 
-<section id="mistakes" class="card">
+<section id="mistakes" class="sheet">
 <h2>常見扣分</h2>
 <ul>{% for m in g.COMMON_MISTAKES %}<li>{{ m }}</li>{% endfor %}</ul>
-<p><a class="btn" href="/submit?skill=writing">寫好了，交給教練批改 →</a></p>
+<p><a class="btn" href="/submit?skill=writing">寫好了，交作文</a></p>
 </section>
 
 <style>
-.toc{display:flex;gap:6px;position:sticky;top:52px;z-index:1;padding:8px 12px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+.toc{display:flex;gap:6px;position:sticky;top:58px;z-index:1;padding:8px 12px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
 .toc::-webkit-scrollbar{display:none}
-.toc a{font-size:.88rem;padding:3px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none}
+.toc a{font-size:.88rem;padding:3px 10px;border:1px solid var(--rule);border-radius:999px;text-decoration:none}
 section{scroll-margin-top:110px}
 section table th{vertical-align:top}
 h3{font-size:1rem;margin:1.2em 0 .4em}
-.sub{background:var(--bg);border-radius:10px;padding:10px 12px}
+.sub{background:var(--paper);border-radius:10px;padding:10px 12px}
 .sub ul{margin:.4em 0 0;padding-left:1.2em}
-details.item{border-top:1px solid var(--line);padding:10px 0}
+details.item{border-top:1px solid var(--rule);padding:10px 0}
 details.item summary{cursor:pointer}
 details.item ol,details.item ul{margin:.5em 0;padding-left:1.4em}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -97,7 +97,7 @@ details.item ol,details.item ul{margin:.5em 0;padding-left:1.4em}
 .cgroup{scroll-margin-top:110px}
 .ctable th{width:38%;font-weight:600;vertical-align:top}
 .ex{color:var(--muted);font-style:italic;margin-top:2px}
-@media (max-width:600px){section table th,section table td,.ctable th{display:block;width:auto;border:0;padding:2px 0}section table tr{display:block;border-bottom:1px solid var(--line);padding:8px 0}}
+@media (max-width:600px){section table th,section table td,.ctable th{display:block;width:auto;border:0;padding:2px 0}section table tr{display:block;border-bottom:1px solid var(--rule);padding:8px 0}}
 </style>
 <script>
 const q = document.getElementById('q');

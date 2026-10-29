@@ -2,6 +2,7 @@
 import hmac
 from urllib.parse import quote
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -18,7 +19,9 @@ from app.logic import (
     SettingsError,
     get_settings,
     leaves_used,
-    practice_date,
+    current_date,
+    time_label,
+    use_leave,
     outstanding_fines,
     update_settings,
 )
@@ -66,18 +69,36 @@ def logout(request: Request):
     return RedirectResponse("/login", 303)
 
 
+WEEKDAYS = "一二三四五六日"
+
+
 @router.get("/", dependencies=[Auth])
-def dashboard(request: Request, session: Session = Depends(get_session)):
+def dashboard(request: Request, msg: str = "", session: Session = Depends(get_session)):
     now = clock.now()
     st = get_settings(session)
-    day = get_or_create_day(session, st, practice_date(st, now))
-    recent = session.exec(select(Submission).order_by(Submission.id.desc()).limit(10)).all()
+    day = get_or_create_day(session, st, current_date(session, st, now))
+    recent = session.exec(select(Submission).order_by(Submission.id.desc()).limit(6)).all()
+    d = date.fromisoformat(day.date)
     return render(
-        request, "dashboard.html", st=st, day=day, recent=recent,
+        request, "dashboard.html", st=st, day=day, recent=recent, msg=msg,
+        date_label=f"{d.month} 月 {d.day} 日 星期{WEEKDAYS[d.weekday()]}",
+        deadline_label=time_label(st, "deadline_time"), settle_label=time_label(st, "settle_time"),
         leaves_left=st.leave_per_month - leaves_used(session, day.date),
         fines=outstanding_fines(session),
         push_left=push.remaining(session, st, now),
     )
+
+
+@router.post("/leave", dependencies=[Auth])
+def take_leave(session: Session = Depends(get_session)):
+    st = get_settings(session)
+    day = get_or_create_day(session, st, current_date(session, st, clock.now()))
+    return RedirectResponse(f"/?msg={quote(use_leave(session, st, day))}", 303)
+
+
+@router.get("/more", dependencies=[Auth])
+def more_page(request: Request, session: Session = Depends(get_session)):
+    return render(request, "more.html", st=get_settings(session), fines=outstanding_fines(session))
 
 
 @router.get("/submit", dependencies=[Auth])
@@ -164,7 +185,7 @@ def submission_detail(request: Request, sub_id: int, finished: int = 0, fill_err
     image_ids = session.exec(
         select(SubmissionImage.id).where(SubmissionImage.submission_id == sub_id)
     ).all()
-    return render(request, "submission.html", sub=sub, r=sub.result, finished=bool(finished),
+    return render(request, "submission.html", sub=sub, r=sub.result, finished=bool(finished), rows=rows,
                   mistakes=[a for a in rows if a.is_mistake],
                   corrects=[a for a in rows if a.status == "correct"],
                   ungraded=[a for a in rows if a.status == UNGRADED],
@@ -322,7 +343,7 @@ async def save_settings(request: Request, session: Session = Depends(get_session
         session.rollback()
         notes = ["格式錯誤，請檢查數字與時間（HH:MM）。"]
     session.refresh(st)
-    return render(request, "settings.html", st=st, notes=notes or ["已儲存 ✅"])
+    return render(request, "settings.html", st=st, notes=notes or ["已儲存設定。"])
 
 
 @router.get("/fines", dependencies=[Auth])

@@ -1,48 +1,49 @@
 {% extends "base.html" %}{% block body %}
-<h1>📕 錯題本</h1>
-{% if book_stats or stats %}<div class="card">
-{% if book_stats %}<h2>待複習（依書本）</h2>
-<p>{% for b, n in book_stats %}{% if b == '未分類' %}<span class="tag">{{ b }} × {{ n }}</span>{% else %}<a class="tag" href="/mistakes?book={{ b|urlencode }}">{{ b }} × {{ n }}</a>{% endif %} {% endfor %}</p>{% endif %}
-{% if stats %}<h2>待複習（依錯誤類型）</h2>
-<p>{% for t, n in stats %}<a class="tag" href="/mistakes?error_type={{ t|urlencode }}">{{ t }} × {{ n }}</a> {% endfor %}</p>{% endif %}
-</div>{% endif %}
+{% set filtered = skill or book or test or part or error_type or show != 'open' %}
+<h1>錯題本</h1>
+{% if stats %}<p class="muted">還沒搞懂的錯題，依錯誤類型：</p>
+<p class="chips">{% for t, n in stats %}<a class="tag {{ 'on' if t == error_type }}" href="/mistakes?error_type={{ t|urlencode }}">{{ t }} {{ n }}</a>{% endfor %}</p>{% endif %}
+{% if book_stats|length > 1 %}<p class="chips">{% for b, n in book_stats %}{% if b == '未分類' %}<span class="tag">未分類 {{ n }}</span>{% else %}<a class="tag {{ 'on' if b == book }}" href="/mistakes?book={{ b|urlencode }}">{{ b }} {{ n }}</a>{% endif %}{% endfor %}</p>{% endif %}
 
-<form class="card filters" method="get">
+<details class="fold filters" {{ 'open' if filtered }}><summary>篩選{% if filtered %}（已套用）{% endif %}</summary>
+<form method="get" class="sheet grid2">
 <div><label>科目</label><select name="skill"><option value="">全部</option>{% for s in SKILLS %}<option value="{{ s }}" {{ 'selected' if s == skill }}>{{ SKILL_ZH[s] }}</option>{% endfor %}</select></div>
 <div><label>書本</label><select name="book" onchange="this.form.test.value='';this.form.part.value='';this.form.submit()"><option value="">全部</option>{% for b in books %}<option {{ 'selected' if b == book }}>{{ b }}</option>{% endfor %}</select></div>
 <div><label>Test</label><select name="test" onchange="this.form.part.value='';this.form.submit()"><option value="">全部</option>{% for t in tests %}<option {{ 'selected' if t == test }}>{{ t }}</option>{% endfor %}</select></div>
 <div><label>Part / Passage</label><select name="part"><option value="">全部</option>{% for p in parts %}<option {{ 'selected' if p == part }}>{{ p }}</option>{% endfor %}</select></div>
 <div><label>錯誤類型</label><select name="error_type"><option value="">全部</option>{% for t in error_types %}<option {{ 'selected' if t == error_type }}>{{ t }}</option>{% endfor %}</select></div>
 <div><label>顯示</label><select name="show"><option value="open" {{ 'selected' if show == 'open' }}>還沒懂的</option><option value="all" {{ 'selected' if show == 'all' }}>全部</option></select></div>
-<div class="actions"><button>篩選</button> <a href="/mistakes" class="muted">清除</a></div>
-</form>
+<div class="full"><button>套用篩選</button> <a href="/mistakes" style="margin-left:8px">清除</a></div>
+</form></details>
 
 {% for g in groups %}{% set sub = g.sub %}
-<details class="card group" {{ 'open' if groups|length <= 3 or loop.first }}>
-<summary>
-  <span class="gtitle">{{ sub.source_label or '未標出處' }}</span>
-  <span class="muted">{{ SKILL_ZH[sub.skill] }} · {{ sub.date }}{% if sub.skill in ('listening','reading') %} · {{ sub.correct_count }}/{{ sub.question_count }}{% endif %} · {{ g['items']|length }} 題</span>
-</summary>
-{% for m in g['items'] %}<div class="mistake">
-<div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span></span>
-<form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="ghost">{{ '✅ 已懂' if m.understood else '標記已懂' }}</button></form></div>
-{% if m.question %}<p><b>{{ m.question }}</b></p>{% endif %}
-<p>你：<span class="bad">{{ m.show(m.user_answer) or '（未作答）' }}</span>　正解：<span class="ok">{{ m.key_text }}</span>　<a class="muted" href="/submissions/{{ sub.id }}#m{{ m.id }}">✏️ 修改</a></p>
+<details class="sheet group" {{ 'open' if groups|length <= 3 or loop.first }}>
+<summary><span class="gtitle">{{ sub.source_label or '未標出處' }}</span>
+<span class="muted">{{ SKILL_ZH[sub.skill] }}，{{ sub.date }}{% if sub.skill in ('listening','reading') %}，答對 {{ sub.correct_count }}/{{ sub.question_count }}{% endif %}，錯 {{ g['items']|length }} 題</span></summary>
+{% for m in g['items'] %}<div class="mrow">
+<div class="row"><span><b class="qno">Q{{ m.question_no }}</b> <span class="tag">{{ m.error_type }}</span></span>
+<form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="quiet">{{ '已懂' if m.understood else '標記已懂' }}</button></form></div>
+{% if m.question %}<p class="qtext">{{ m.question }}</p>{% endif %}
+<p><span class="hand bad">{{ m.show(m.user_answer) or '（未作答）' }}</span>　<span class="muted">正解</span> <span class="hand ok">{{ m.key_text }}</span></p>
 {% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
-{% if m.explanation %}<p>{{ m.explanation }}</p>{% endif %}{% if m.tip %}<p>💡 {{ m.tip }}</p>{% endif %}
+{% if m.explanation %}<p>{{ m.explanation }}</p>{% endif %}{% if m.tip %}<p class="tip">下次：{{ m.tip }}</p>{% endif %}
+<a class="muted" href="/submissions/{{ sub.id }}#m{{ m.id }}">修改這題</a>
 </div>{% endfor %}
-<p><a href="/submissions/{{ sub.id }}">看整篇解析 →</a></p>
+<p><a href="/submissions/{{ sub.id }}">看整份答案卡</a></p>
 </details>
-{% else %}<div class="card"><p class="muted">沒有符合的錯題 🎉</p></div>{% endfor %}
+{% else %}<div class="sheet"><p>{% if filtered %}沒有符合篩選的錯題。<a href="/mistakes">清除篩選</a>{% else %}目前沒有待複習的錯題。{% endif %}</p></div>{% endfor %}
 
 <style>
-.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 12px}
-.filters .actions{align-self:end}
-details.group>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px}
-details.group>summary::-webkit-details-marker{display:none}
-details.group>summary .gtitle{font-weight:600}
-details.group>summary .gtitle::before{content:"▸ ";color:var(--muted)}
-details.group[open]>summary .gtitle::before{content:"▾ "}
-details.group[open]>summary{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.tag.on{border-color:var(--ink);color:var(--ink);background:var(--ink-soft)}
+.filters{margin:4px 0 16px}
+.filters form{margin-top:8px}
+.group>summary{display:flex;flex-direction:column;gap:2px}
+.group>summary .gtitle{font-weight:700}
+.group[open]>summary{padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--rule)}
+.mrow{border-top:1px solid var(--rule);padding:12px 0}
+.mrow:first-of-type{border-top:0}
+.qno{color:var(--ink)} .qtext{font-weight:500}
+.tip{background:var(--ink-soft);border-radius:8px;padding:8px 12px}
 </style>
 {% endblock %}

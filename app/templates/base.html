@@ -2,54 +2,145 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>寫未？</title>
+<meta name="apple-mobile-web-app-title" content="寫未？">
+<meta name="theme-color" content="#F2F4F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
+<title>{% block title %}寫未？{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#d97706}
-@media (prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--fg:#e8eaee;--muted:#9aa1ad;--line:#2c313b;--accent:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+:root{
+  --paper:#F2F4F7; --sheet:#FFFFFF; --ink:#3B3F99; --ink-soft:#E7E8F6;
+  --fg:#2A2D33; --muted:#6A7180; --rule:#D5DAE3;
+  --tick:#1E7F4E; --tick-soft:#E3F3EA; --red:#C8372D; --red-soft:#FBE9E7;
+  --pencil:#B7791F; --pencil-soft:#FBF1DE;
+  --hand:"LXGW WenKai TC","Kaiti TC","STKaiti",serif;
+  --sans:"Noto Sans TC",-apple-system,BlinkMacSystemFont,"PingFang TC",sans-serif;
+  --r-sheet:12px; --r-cell:6px; --tabbar:64px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#121418; --sheet:#1B1E24; --ink:#9DA6F2; --ink-soft:#262A45;
+  --fg:#E6E8EC; --muted:#9AA1AD; --rule:#2E333D;
+  --tick:#52C48C; --tick-soft:#173226; --red:#F0705F; --red-soft:#3A1E1B;
+  --pencil:#E2A946; --pencil-soft:#352A15;
+}}
 *{box-sizing:border-box}
-a{color:var(--accent)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--fg);font:16px/1.7 var(--sans);font-variant-numeric:tabular-nums}
+a{color:var(--ink);text-underline-offset:3px}
 [hidden]{display:none!important}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",sans-serif}
-header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1}
-nav{max-width:860px;margin:auto;display:flex;gap:4px;padding:8px 16px;overflow-x:auto}
-nav a{padding:6px 10px;border-radius:8px;color:var(--fg);text-decoration:none;white-space:nowrap}
-nav a:hover{background:var(--bg)}
-main{max-width:860px;margin:auto;padding:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
-h1{font-size:1.4rem;margin:.2em 0 .6em} h2{font-size:1.1rem;margin:.2em 0 .6em}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
+h1,h2,h3{line-height:1.35;margin:0 0 .5em;font-weight:700}
+h1{font-size:1.75rem} h2{font-size:1.25rem} h3{font-size:1.05rem}
+p{margin:.4em 0}
 .muted{color:var(--muted);font-size:.9rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.stat b{display:block;font-size:1.6rem}
-.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--accent)}
-.bar i.full{background:var(--ok)}
-.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
-input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
-input[type=checkbox]{width:auto}
-textarea{min-height:320px}
-label{display:block;margin:8px 0 4px;font-size:.92rem}
-button,.btn{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;text-decoration:none;display:inline-block}
-button.ghost.danger{color:var(--bad)}
-button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line);padding:4px 10px}
-.tag{display:inline-block;font-size:.8rem;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
-.ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
-.mistake{border-top:1px solid var(--line);padding:12px 0}
-.mistake:first-child{border-top:0}
-blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--accent);background:var(--bg);border-radius:4px}
-.notice{background:var(--bg);border:1px solid var(--warn);border-radius:8px;padding:8px 12px;margin-bottom:12px}
-table{width:100%;border-collapse:collapse} td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}
-fieldset{border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:8px 12px 12px}
-legend{padding:0 6px;font-weight:600}
-pre{white-space:pre-wrap;word-break:break-word}
+.hand{font-family:var(--hand)}
+.ok{color:var(--tick)} .bad{color:var(--red)} .warn{color:var(--pencil)}
+
+/* Frame: top bar on wide screens, tab bar at the bottom on phones */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}
+.top-in{max-width:760px;margin:auto;display:flex;align-items:center;gap:20px;padding:10px 20px}
+.brand{font-family:var(--hand);font-size:1.35rem;font-weight:700;color:var(--fg);text-decoration:none}
+.tabs{display:flex;gap:2px;margin-left:auto}
+.tabs a{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:.95rem}
+.tabs a[aria-current=page]{color:var(--ink);background:var(--ink-soft);font-weight:500}
+.tabs svg{width:20px;height:20px;flex:none}
+main{max-width:760px;margin:auto;padding:24px 20px 48px}
+@media (max-width:759px){
+  .top{backdrop-filter:none;background:var(--paper)}
+  .top .tabs{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:6;justify-content:space-around;
+    background:var(--sheet);border-top:1px solid var(--rule);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .tabs a{flex-direction:column;gap:2px;font-size:.72rem;padding:4px 6px;min-width:56px}
+  .tabs a[aria-current=page]{background:none}
+  main{padding:16px 16px calc(var(--tabbar) + 32px + env(safe-area-inset-bottom))}
+  h1{font-size:1.5rem}
+}
+
+/* Sheets: the paper surfaces content sits on */
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:var(--r-sheet);padding:20px;margin-bottom:16px}
+.sheet>h2:first-child{margin-top:0}
+.section{margin:28px 0 12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.stack>*+*{margin-top:12px}
+hr{border:0;border-top:1px solid var(--rule);margin:16px 0}
+
+/* Controls */
+label{display:block;font-size:.9rem;font-weight:500;margin:12px 0 4px}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:9px 11px;width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--ink);outline-offset:-1px;background:var(--sheet)}
+input[type=checkbox]{width:auto;accent-color:var(--ink)}
+textarea{min-height:240px;resize:vertical}
+.btn,button{font:inherit;font-weight:500;background:var(--ink);color:#fff;border:0;border-radius:10px;padding:10px 18px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;justify-content:center}
+@media (prefers-color-scheme:dark){.btn,button{color:#11131a}}
+button:disabled{opacity:.6;cursor:progress}
+.btn.quiet,button.quiet{background:transparent;color:var(--ink);border:1px solid var(--rule);padding:6px 12px;font-size:.9rem}
+.btn.quiet:hover,button.quiet:hover{border-color:var(--ink)}
+button.danger{background:transparent;color:var(--red);border:1px solid var(--rule);padding:6px 12px;font-size:.9rem}
+.btn.wide,button.wide{width:100%;padding:13px}
+.seg{display:flex;flex-wrap:wrap;gap:6px;position:relative}
+.seg input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none}
+.seg label{margin:0;padding:8px 16px;border:1px solid var(--rule);border-radius:999px;background:var(--sheet);cursor:pointer;font-weight:500}
+.seg input:checked+label{background:var(--ink);border-color:var(--ink);color:var(--sheet)}
+.seg input:focus-visible+label{outline:2px solid var(--ink);outline-offset:2px}
+details>summary{cursor:pointer;list-style:none}
+details>summary::-webkit-details-marker{display:none}
+.fold>summary{color:var(--ink);font-size:.92rem;display:inline-flex;align-items:center;gap:6px}
+.fold>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+.fold[open]>summary::before{transform:rotate(45deg)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 14px}
+.grid2 .full{grid-column:1/-1}
+
+/* Notices */
+.note{border-radius:10px;padding:10px 14px;margin-bottom:14px;background:var(--ink-soft);color:var(--fg)}
+.note.ok{background:var(--tick-soft)} .note.bad{background:var(--red-soft)} .note.warn{background:var(--pencil-soft)}
+
+/* Tags */
+.tag{display:inline-block;font-size:.8rem;padding:1px 9px;border-radius:999px;border:1px solid var(--rule);color:var(--muted);background:var(--sheet);text-decoration:none;white-space:nowrap}
+a.tag:hover{border-color:var(--ink);color:var(--ink)}
+
+/* The answer sheet: numbered boxes with the student's answer in pencil */
+.answers{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+@media (max-width:480px){.answers{grid-template-columns:repeat(3,1fr);gap:6px}}
+.cell{position:relative;display:block;min-height:64px;padding:20px 10px 8px;border:1.5px solid var(--rule);border-radius:var(--r-cell);background:var(--sheet);color:var(--fg);text-decoration:none;overflow:hidden}
+.cell .no{position:absolute;top:4px;left:8px;font-size:.75rem;font-weight:700;color:var(--ink)}
+.cell .mark{position:absolute;top:3px;right:7px;font-size:.85rem;font-weight:700}
+.cell .ans{font-family:var(--hand);font-size:1rem;line-height:1.3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cell.correct{border-color:color-mix(in srgb,var(--tick) 45%,var(--rule))}
+.cell.correct .mark{color:var(--tick)}
+.cell.wrong,.cell.blank{border-color:var(--red);background:var(--red-soft)}
+.cell.wrong .mark,.cell.blank .mark{color:var(--red)}
+.cell.wrong .ans{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:1.5px}
+.cell.ungraded{border-style:dashed;border-color:var(--pencil);background:var(--pencil-soft)}
+.cell.ungraded .mark{color:var(--pencil)}
+a.cell:hover{border-color:var(--ink)}
+
+/* Progress boxes: one box per set */
+.boxes{display:flex;flex-wrap:wrap;gap:6px}
+.box{width:30px;height:30px;border:1.5px solid var(--rule);border-radius:var(--r-cell);display:grid;place-items:center;font-weight:700;color:var(--tick)}
+.box.done{border-color:var(--tick);background:var(--tick-soft)}
+.box.debt{border-style:dashed;border-color:var(--pencil)}
+
+blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--ink);background:var(--paper);border-radius:0 6px 6px 0}
+table{width:100%;border-collapse:collapse} td,th{padding:8px 6px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+pre{white-space:pre-wrap;word-break:break-word;font:inherit}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
+{% block head %}{% endblock %}
 </head>
 <body>
-{% if request.session.get('auth') %}
-<header><nav>
-<a href="/">🏠 今日</a><a href="/submit">📝 交題目</a><a href="/submissions">📚 已做題目</a><a href="/mistakes">📕 錯題本</a><a href="/writing">✍️ 寫作</a><a href="/fines">💸 罰金</a><a href="/settings">⚙️ 設定</a>
-</nav></header>
+{% if request.session.get('auth') %}{% set here = request.url.path %}
+<header class="top"><div class="top-in">
+<a class="brand" href="/">寫未？</a>
+<nav class="tabs" aria-label="主要功能">
+<a href="/" {{ 'aria-current=page' if here == '/' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>今天</a>
+<a href="/submit" {{ 'aria-current=page' if here.startswith('/submit') and not here.startswith('/submissions') }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15.5 4.5l4 4L9 19H5v-4z"/><path d="M13 7l4 4"/></svg>交題目</a>
+<a href="/mistakes" {{ 'aria-current=page' if here.startswith('/mistakes') }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 4h10l3 3v13H6z"/><path d="M9.5 10.5l5 5M14.5 10.5l-5 5"/></svg>錯題本</a>
+<a href="/submissions" {{ 'aria-current=page' if here.startswith('/submissions') }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg>紀錄</a>
+<a href="/more" {{ 'aria-current=page' if here in ('/more', '/writing', '/fines', '/settings') }}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>更多</a>
+</nav></div></header>
 {% endif %}
 <main>{% block body %}{% endblock %}</main>
 </body>

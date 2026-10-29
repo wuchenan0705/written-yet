@@ -189,13 +189,13 @@ def test_review_page_routes(monkeypatch):
         r = c.post("/submit", data={"skill": "reading", "text": "x"})
         sub_id = int(str(r.url).split("/submissions/")[1].split("?")[0])
         assert "（未作答）" in r.text and "其實答對了" in r.text and "其實答錯了" in r.text and "補答案" in r.text
-        assert "找不到你在第 3 題" in r.text and "1/2" in r.text
+        assert "找不到你在第 3 題" in r.text and "<b>1</b>/2" in r.text
         assert [x["question_no"] for x in calls.pop()] == ["1"]  # blank answer gets an explanation
         with Session(engine) as s:
             ids = {a.question_no: a.id for a in review.answers_of(s, sub_id)}
         r = c.post(f"/mistakes/{ids['1']}/edit", data={"user_answer": "River", "correct_answer": "river",
                                                       "question_no": "1", "error_type": "未作答"})
-        assert "答對的題目（2）" in r.text and "✏️ 這份批改有手動修正過" in r.text
+        assert "答對的題目（2）" in r.text and "這份批改有手動修正過" in r.text
         r = c.post(f"/mistakes/{ids['1']}/edit", data={"question_no": "2"})
         assert "第 2 題已經存在" in r.text
         r = c.post(f"/mistakes/{ids['2']}/mark-wrong", data={"user_answer": "C", "error_type": "細節漏看"})
@@ -212,7 +212,7 @@ def test_review_page_routes(monkeypatch):
         assert "修改科目／出處" in r.text
         r = c.post(f"/submissions/{sub_id}/info", data={"skill": "listening", "book": "C18", "test": "Test 2",
                                                        "part": "Section 1", "title": ""})
-        assert "聽力 ·" in r.text and "C18 Test 2 Section 1" in r.text
+        assert "<h1>聽力" in r.text and "C18 Test 2 Section 1" in r.text
         with Session(engine) as s:
             sub = s.get(Submission, sub_id)
             assert (sub.question_count, sub.correct_count) == (3, 2) and sub.skill == "listening"
@@ -317,4 +317,4 @@ def test_submissions_page_lists_filters_and_deletes(monkeypatch):
         assert "已刪除" in r.text and "C10 Test 4" not in r.text
         with Session(engine) as s:
             assert s.get(Submission, sub_id) is None
-        assert "📚 已做題目" in c.get("/").text
+        assert ">紀錄</a>" in c.get("/").text and "寫未？" in c.get("/").text

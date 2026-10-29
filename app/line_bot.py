@@ -30,7 +30,7 @@ from sqlmodel import Session, select
 from app import clock, config, images, push, review, submissions, writing_guide
 from app.db import engine
 from app.grader import GradingError
-from app.logic import get_or_create_day, get_settings, outstanding_fines, practice_date, progress_text, use_leave
+from app.logic import get_or_create_day, get_settings, outstanding_fines, current_date, progress_text, use_leave
 from app.models import MISTAKE_STATUSES, OBJECTIVE_SKILLS, SKILL_ZH, UNGRADED, Answer, DraftImage, Submission
 
 log = logging.getLogger(__name__)
@@ -271,7 +271,7 @@ def handle_event(ev) -> None:
             return  # only the group binding command works in groups
 
         now = clock.now()
-        day = get_or_create_day(session, st, practice_date(st, now))
+        day = get_or_create_day(session, st, current_date(session, st, now))
         if cmd == "submit":
             drafts = pending_drafts(session, now)
             if not body and not drafts:

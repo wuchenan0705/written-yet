@@ -1,8 +1,10 @@
-{% extends "base.html" %}{% block body %}
-<h1>📚 已做題目</h1>
-{% if request.query_params.get('deleted') %}<div class="notice">🗑 已刪除，當天進度也扣回來了。</div>{% endif %}
+{% extends "base.html" %}{% block title %}已做題目｜寫未？{% endblock %}{% block body %}
+{% set filtered = skill or book or test or part or only %}
+<h1>已做題目</h1>
+{% if request.query_params.get('deleted') %}<div class="note">已刪除，當天進度也扣回來了。</div>{% endif %}
 
-<form class="card filters" method="get">
+<details class="fold filters" {{ 'open' if filtered }}><summary>篩選{% if filtered %}（已套用）{% endif %}</summary>
+<form method="get" class="sheet grid2">
 <div><label>科目</label><select name="skill"><option value="">全部</option>{% for s in SKILLS %}<option value="{{ s }}" {{ 'selected' if s == skill }}>{{ SKILL_ZH[s] }}</option>{% endfor %}</select></div>
 <div><label>書本</label><select name="book" onchange="this.form.test.value='';this.form.part.value='';this.form.submit()"><option value="">全部</option>{% for b in books %}<option {{ 'selected' if b == book }}>{{ b }}</option>{% endfor %}</select></div>
 <div><label>Test</label><select name="test" onchange="this.form.part.value='';this.form.submit()"><option value="">全部</option>{% for t in tests %}<option {{ 'selected' if t == test }}>{{ t }}</option>{% endfor %}</select></div>
@@ -12,36 +14,30 @@
   <option value="open" {{ 'selected' if only == 'open' }}>還有錯題沒懂的</option>
   <option value="unsourced" {{ 'selected' if only == 'unsourced' }}>沒標出處的</option>
 </select></div>
-<div class="actions"><button>篩選</button> <a href="/submissions" class="muted">清除</a></div>
-</form>
+<div class="full"><button>套用篩選</button> <a href="/submissions" style="margin-left:8px">清除</a></div>
+</form></details>
 
-<p class="muted">共 {{ subs|length }} 份{% if subs|length >= 300 %}（只顯示最近 300 份）{% endif %}</p>
+<p class="muted">共 {{ subs|length }} 份{% if subs|length >= 300 %}，只顯示最近 300 份{% endif %}</p>
+<div class="sheet list">
 {% for s in subs %}{% set c = counts.get(s.id, [0, 0, 0]) %}
-<div class="card sub-item">
-  <div class="row">
-    <a class="stitle" href="/submissions/{{ s.id }}">{{ s.source_label or '未標出處' }}</a>
-    <span class="score">{% if s.skill in ('listening','reading') %}{{ s.correct_count }}/{{ s.question_count }}{% elif s.result.band_estimate %}Band {{ s.result.band_estimate }}{% endif %}</span>
-  </div>
-  <div class="meta muted">
-    <span class="tag">{{ SKILL_ZH[s.skill] }}</span> {{ s.date }}
-    {% if c[0] %} · 錯 {{ c[0] }} 題{% if c[1] %}（<span class="warn">{{ c[1] }} 題還沒懂</span>）{% endif %}{% endif %}
-    {% if c[2] %} · <span class="warn">{{ c[2] }} 題未計分</span>{% endif %}
-    {% if s.result.edited %} · ✏️ 已修正{% endif %}
-  </div>
-  <div class="row links">
-    <a href="/submissions/{{ s.id }}">查看／改錯題 →</a>
-    <form method="post" action="/submissions/{{ s.id }}/delete" onsubmit="return confirm('確定刪除這份提交？錯題和截圖會一起刪掉，當天進度也會扣回來。');"><button class="ghost danger">刪除</button></form>
-  </div>
+<a class="item" href="/submissions/{{ s.id }}">
+  <span class="what"><b>{{ s.source_label or '未標出處' }}</b>
+  <span class="muted">{{ SKILL_ZH[s.skill] }}，{{ s.date }}
+  {%- if c[0] %}，錯 {{ c[0] }} 題{% if c[1] %}（<span class="warn">{{ c[1] }} 題還沒懂</span>）{% endif %}{% endif %}
+  {%- if c[2] %}，<span class="warn">{{ c[2] }} 題未計分</span>{% endif %}
+  {%- if s.result.edited %}，已手動修正{% endif %}</span></span>
+  <span class="score">{% if s.skill in ('listening','reading') %}{{ s.correct_count }}/{{ s.question_count }}{% elif s.result.band_estimate %}Band {{ s.result.band_estimate }}{% endif %}</span>
+</a>
+{% else %}<p>{% if filtered %}沒有符合篩選的提交。<a href="/submissions">清除篩選</a>{% else %}還沒交過題目。<a href="/submit">交第一篇</a>{% endif %}</p>{% endfor %}
 </div>
-{% else %}<div class="card"><p class="muted">還沒有符合的提交。<a href="/submit">去交題目 →</a></p></div>{% endfor %}
-
+<p class="muted">要刪除交錯的提交，打開那一份，在最下面刪除。</p>
 <style>
-.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px 12px}
-.filters .actions{align-self:end}
-.sub-item{padding:12px 16px}
-.sub-item .stitle{font-weight:600;text-decoration:none}
-.sub-item .score{font-weight:600;white-space:nowrap}
-.sub-item .meta{margin:2px 0 6px}
-.sub-item .links{margin:0}
+.filters{margin:4px 0 14px}.filters form{margin-top:8px}
+.list{padding:4px 20px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--rule);color:var(--fg);text-decoration:none;line-height:1.5}
+.item:first-child{border-top:0}
+.item:hover b{color:var(--ink)}
+.what{display:flex;flex-direction:column}
+.score{font-weight:700;white-space:nowrap;font-size:1.1rem}
 </style>
 {% endblock %}

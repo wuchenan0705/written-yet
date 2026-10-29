@@ -1,102 +1,160 @@
 {% extends "base.html" %}{% block body %}
-{% if finished %}<div class="notice ok">🎉 今日目標全部完成！</div>{% endif %}
-{% if sub.source_label %}<p class="muted" style="margin:0">📖 <a href="/mistakes?book={{ sub.book|urlencode }}&test={{ sub.test|urlencode }}&part={{ sub.part|urlencode }}&show=all">{{ sub.source_label }}</a></p>{% endif %}
-<h1>{{ SKILL_ZH[sub.skill] }} · {{ sub.date }}
-{% if sub.skill in ('listening','reading') %}<span class="tag">{{ sub.correct_count }}/{{ sub.question_count }}</span>{% endif %}
-{% if r.band_estimate %}<span class="tag">Band {{ r.band_estimate }}</span>{% endif %}</h1>
-<details class="edit" style="margin:-4px 0 12px"><summary>✏️ 修改科目／出處</summary>
-<form method="post" action="/submissions/{{ sub.id }}/info" class="editgrid card" style="margin-top:6px">
+{% set objective = sub.skill in ('listening','reading') %}
+{% if finished %}<div class="note ok">今日目標全部完成，今天可以休息了。</div>{% endif %}
+{% if fill_error %}<div class="note bad">{{ fill_error }}</div>{% endif %}
+
+<header class="head">
+{% if sub.source_label %}<p class="src"><a href="/mistakes?book={{ sub.book|urlencode }}&test={{ sub.test|urlencode }}&part={{ sub.part|urlencode }}&show=all">{{ sub.source_label }}</a></p>{% endif %}
+<div class="row" style="align-items:flex-end">
+<h1>{{ SKILL_ZH[sub.skill] }}<span class="muted when">{{ sub.date }}</span></h1>
+{% if objective %}<p class="big"><b>{{ sub.correct_count }}</b>/{{ sub.question_count }}<span class="muted">答對</span></p>
+{% elif r.band_estimate %}<p class="big"><span class="muted">Band</span><b>{{ r.band_estimate }}</b></p>{% endif %}
+</div>
+{% if r.summary %}<p class="summary">{{ r.summary }}</p>{% endif %}
+{% if r.edited %}<p class="muted">這份批改有手動修正過。</p>{% endif %}
+</header>
+
+{% if objective and rows %}
+<section class="sheet" aria-label="答案卡">
+<div class="answers">{% for a in rows %}
+<a class="cell {{ a.status }}" href="#m{{ a.id }}">
+<span class="no">{{ a.question_no }}</span>
+<span class="mark" aria-label="{{ {'correct':'答對','wrong':'答錯','blank':'未作答','ungraded':'還沒計分'}[a.status] }}">{{ {'correct':'✓','wrong':'✗','blank':'✗','ungraded':'？'}[a.status] }}</span>
+<span class="ans">{% if a.status == 'ungraded' %}<span class="muted">看不到</span>{% elif a.user_answer %}{{ a.user_answer }}{% else %}<span class="muted">空白</span>{% endif %}</span>
+</a>{% endfor %}</div>
+<p class="legend muted"><span class="ok">✓</span> 答對　<span class="bad">✗</span> 答錯或空白　<span class="warn">？</span> 看不到你的答案，還沒計分</p>
+</section>
+{% endif %}
+
+{% if ungraded %}<div class="note warn">找不到你在第 {% for a in ungraded %}{{ a.question_no }}{{ '、' if not loop.last }}{% endfor %} 題的答案，這些題還沒計分。<a href="#add">補答案</a></div>{% endif %}
+
+{% if mistakes %}
+<h2 class="section">錯題解析（{{ mistakes|length }}）</h2>
+{% for m in mistakes %}
+<article class="sheet q" id="m{{ m.id }}">
+<div class="row qhead"><span><b class="qno">第 {{ m.question_no }} 題</b> <span class="tag">{{ m.error_type }}</span>{% if m.key_source == 'coach' %} <span class="tag" title="頁面上沒有正解，由教練解題">教練判斷</span>{% endif %}</span>
+<form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="quiet">{{ '已懂' if m.understood else '標記已懂' }}</button></form></div>
+{% if m.question %}<p class="qtext">{{ m.question }}</p>{% endif %}
+<dl class="pair">
+<div><dt>你的答案</dt><dd class="hand bad">{{ m.show(m.user_answer) or '（未作答）' }}</dd></div>
+<div><dt>正解</dt><dd class="hand ok">{{ m.key_text or '（還沒有正解）' }}</dd></div>
+</dl>
+{% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
+{% if m.explanation %}<p>{{ m.explanation }}</p>{% endif %}
+{% if m.tip %}<p class="tip">下次：{{ m.tip }}</p>{% endif %}
+<div class="qfoot">
+<form method="post" action="/mistakes/{{ m.id }}/mark-correct"><button class="quiet" title="以後這個答案也算對">其實答對了</button></form>
+{% set edit = m %}{% include "_edit_answer.html" %}
+</div>
+</article>{% endfor %}
+{% elif objective and corrects and not ungraded %}<div class="note ok">全對。</div>{% endif %}
+
+{% if corrects %}
+<details class="sheet" id="correct" {{ 'open' if not mistakes }}><summary class="row"><h2 style="margin:0">答對的題目（{{ corrects|length }}）</h2><span class="muted">展開</span></summary>
+{% for c in corrects %}<div class="ok-item" id="m{{ c.id }}">
+<p><b class="qno">第 {{ c.question_no }} 題</b> {{ c.question }}</p>
+<p>答案：<span class="hand ok">{{ c.show(c.user_answer) or c.key_text }}</span>{% if c.accepted|length > 1 %}　<span class="muted">可接受：{{ c.key_text }}</span>{% endif %}</p>
+{% if c.evidence %}<blockquote>{{ c.evidence }}</blockquote>{% endif %}
+{% if c.note %}<p class="muted">{{ c.note }}</p>{% endif %}
+<details class="fold"><summary>其實答錯了</summary>
+<form method="post" action="/mistakes/{{ c.id }}/mark-wrong" class="grid2">
+<div><label>你實際的答案（空白 = 未作答）</label><input name="user_answer" value="{{ c.user_answer }}"></div>
+<div><label>錯誤類型</label><select name="error_type">{% for t in error_types if t != '未作答' %}<option {{ 'selected' if t == '其他' }}>{{ t }}</option>{% endfor %}</select></div>
+<div class="full"><button class="quiet">移到錯題</button></div>
+</form></details>
+</div>{% endfor %}</details>
+{% endif %}
+
+{% if objective %}
+<details class="sheet" id="add" {{ 'open' if ungraded }}><summary class="row"><h2 style="margin:0">補答案</h2><span class="muted">勾選沒複製到、漏批或想重新作答的題目</span></summary>
+<form method="post" action="/submissions/{{ sub.id }}/answers" id="fillform">
+<table class="fill">
+<thead><tr><th>題號</th><th>你的答案</th><th>正解（可空白）</th></tr></thead>
+<tbody>
+{% for a in ungraded %}<tr><td><input name="no" value="{{ a.question_no }}" readonly aria-label="題號"></td><td><input name="user" aria-label="第 {{ a.question_no }} 題你的答案" placeholder="{{ 'A / B / C' if a.kind in ('choice','matching','multi') else ('NG / YES / FALSE' if a.kind == 'tfng' else '') }}"></td><td><input name="correct" aria-label="正解"></td></tr>{% endfor %}
+{% for _ in range(2 if ungraded else 3) %}<tr><td><input name="no" placeholder="題號" inputmode="numeric" aria-label="題號"></td><td><input name="user" aria-label="你的答案"></td><td><input name="correct" aria-label="正解"></td></tr>{% endfor %}
+</tbody></table>
+<label for="quick">或一次貼上，會蓋過上面同題號的答案</label>
+<input name="quick" id="quick" placeholder="27A 28C 29B 37 NO 38 NG">
+<p class="muted">已經有正解的題目會直接比對；答錯或沒有正解的，教練會看原文寫解析。選擇題打字母就好。</p>
+<button id="fillgo">送出答案</button>
+</form></details>
+{% endif %}
+
+{% if r.criteria %}<section class="sheet"><h2>評分項目</h2><table>
+{% for c in r.criteria %}<tr><th>{{ c.name }}</th><td class="score">{{ c.band }}</td><td>{{ c.comment }}</td></tr>{% endfor %}
+</table></section>{% endif %}
+
+{% if r.corrections %}<section class="sheet"><h2>修改建議</h2>
+{% for c in r.corrections %}<div class="fix"><p class="hand bad strike">{{ c.original }}</p><p class="hand ok">{{ c.corrected }}</p><p class="muted">{{ c.reason }}</p></div>{% endfor %}
+</section>{% endif %}
+
+{% if r.improved_version %}<section class="sheet"><h2>高分示範</h2><pre class="hand">{{ r.improved_version }}</pre></section>{% endif %}
+
+<details class="sheet"><summary class="row"><h2 style="margin:0">原始提交內容</h2><span class="muted">展開</span></summary>
+{% for i in image_ids %}<p><a href="/images/{{ i }}" target="_blank"><img src="/images/{{ i }}" alt="截圖 {{ loop.index }}" style="max-width:100%;border:1px solid var(--rule);border-radius:6px"></a></p>{% endfor %}
+{% if sub.raw_text %}<pre>{{ sub.raw_text }}</pre>{% endif %}</details>
+
+<details class="fold manage"><summary>修改科目／出處</summary>
+<form method="post" action="/submissions/{{ sub.id }}/info" class="sheet grid2">
 <div><label>科目</label><select name="skill">{% for s in SKILLS %}<option value="{{ s }}" {{ 'selected' if s == sub.skill }}>{{ SKILL_ZH[s] }}</option>{% endfor %}</select></div>
 <div><label>書本</label><input name="book" value="{{ sub.book }}" placeholder="C21"></div>
 <div><label>Test</label><input name="test" value="{{ sub.test }}" placeholder="Test 1"></div>
 <div><label>Part / Passage</label><input name="part" value="{{ sub.part }}" placeholder="Passage 3"></div>
-<div class="wide"><label>標題</label><input name="title" value="{{ sub.title }}"></div>
-<div class="wide"><button>儲存</button> <span class="muted">改科目時，當天進度會一起搬過去（例如閱讀 −1、聽力 +1）。</span></div>
+<div class="full"><label>標題</label><input name="title" value="{{ sub.title }}"></div>
+<div class="full"><button>儲存出處</button> <span class="muted">改科目時，當天進度會一起搬過去。</span></div>
 </form></details>
-{% if r.summary %}<div class="card">{{ r.summary }}</div>{% endif %}
-{% if r.edited %}<p class="muted">✏️ 這份批改有手動修正過。</p>{% endif %}
-{% if fill_error %}<div class="notice bad">{{ fill_error }}</div>{% endif %}
-{% if ungraded %}<div class="notice warn">⚠️ 找不到你在第 {% for a in ungraded %}{{ a.question_no }}{{ '、' if not loop.last }}{% endfor %} 題的答案，這些題還沒計分。在下面「補答案」填上就會批改。</div>{% endif %}
+<form method="post" action="/submissions/{{ sub.id }}/delete" class="manage" onsubmit="return confirm('刪除這份提交？錯題和截圖會一起刪掉，當天進度也會扣回來。');">
+<button class="danger">刪除這份提交</button> <span class="muted">交錯或重複交了才需要。</span></form>
 
-{% if mistakes %}<div class="card"><h2>錯題解析（{{ mistakes|length }}）</h2>
-{% for m in mistakes %}<div class="mistake" id="m{{ m.id }}">
-<div class="row"><span>{% if m.question_no %}<b>Q{{ m.question_no }}</b> {% endif %}<span class="tag">{{ m.error_type }}</span>{% if m.key_source == 'coach' %} <span class="tag" title="頁面上沒有正解，由教練解題">教練判斷</span>{% endif %}</span>
-<span class="actions">
-<form method="post" action="/mistakes/{{ m.id }}/mark-correct"><button class="ghost" title="其實答對了：以後這個答案也算對">其實答對了</button></form>
-<form method="post" action="/mistakes/{{ m.id }}/toggle"><button class="ghost">{{ '✅ 已懂' if m.understood else '標記已懂' }}</button></form>
-</span></div>
-{% if m.question %}<p><b>{{ m.question }}</b></p>{% endif %}
-<p>你的答案：<span class="bad">{{ m.show(m.user_answer) or '（未作答）' }}</span>　正解：<span class="ok">{{ m.key_text or '（還沒有正解）' }}</span></p>
-{% if m.evidence %}<blockquote>{{ m.evidence }}</blockquote>{% endif %}
-{% if m.explanation %}<p>{{ m.explanation }}</p>{% endif %}
-{% if m.tip %}<p>💡 {{ m.tip }}</p>{% endif %}
-{% set edit = m %}{% include "_edit_answer.html" %}
-</div>{% endfor %}</div>
-{% elif sub.skill in ('listening','reading') and corrects and not ungraded %}<div class="card ok">全對，太強了 💯</div>{% endif %}
-
-{% if corrects %}<details class="card" id="correct" {{ 'open' if not mistakes }}><summary><b>✅ 答對的題目（{{ corrects|length }}）</b></summary>
-{% for c in corrects %}<div class="mistake" id="m{{ c.id }}">
-<p>{% if c.question_no %}<b>Q{{ c.question_no }}</b> {% endif %}{{ c.question }}</p>
-<p>答案：<span class="ok">{{ c.show(c.user_answer) or c.key_text }}</span>{% if c.accepted|length > 1 %}　<span class="muted">（可接受：{{ c.key_text }}）</span>{% endif %}</p>
-{% if c.evidence %}<blockquote>{{ c.evidence }}</blockquote>{% endif %}
-{% if c.note %}<p class="muted">🔑 {{ c.note }}</p>{% endif %}
-<details class="edit"><summary>其實答錯了</summary>
-<form method="post" action="/mistakes/{{ c.id }}/mark-wrong" class="editgrid">
-<div><label>你實際的答案（空白 = 未作答）</label><input name="user_answer" value="{{ c.user_answer }}"></div>
-<div><label>錯誤類型</label><select name="error_type">{% for t in error_types if t != '未作答' %}<option {{ 'selected' if t == '其他' }}>{{ t }}</option>{% endfor %}</select></div>
-<div class="wide"><button>移到錯題</button></div>
-</form></details>
-</div>{% endfor %}</details>{% endif %}
-
-{% if sub.skill in ('listening','reading') %}
-<details class="card" id="add" {{ 'open' if ungraded or fill_error }}><summary><b>＋ 補答案</b> <span class="muted">選擇題勾選沒複製到、漏批的題目，或重新作答</span></summary>
-<form method="post" action="/submissions/{{ sub.id }}/answers" id="fillform">
-<table class="fill">
-<tr><th>題號</th><th>你的答案</th><th>正解（可空白）</th></tr>
-{% for a in ungraded %}<tr><td><input name="no" value="{{ a.question_no }}" readonly></td><td><input name="user" placeholder="{{ 'A / B / C' if a.kind in ('choice','matching','multi') else ('NG / YES / FALSE' if a.kind == 'tfng' else '') }}"></td><td><input name="correct"></td></tr>{% endfor %}
-{% for _ in range(2 if ungraded else 3) %}<tr><td><input name="no" placeholder="題號" inputmode="numeric"></td><td><input name="user"></td><td><input name="correct"></td></tr>{% endfor %}
-</table>
-<label>或一次貼上（會覆蓋上面同題號的答案）</label>
-<input name="quick" placeholder="27A 28C 29B 37 NO 38 NG 39 YES">
-<p class="muted">已經有正解的題目會直接比對；答錯或沒有正解的才請教練看原文寫解析。選擇題打字母就好。</p>
-<button id="fillgo">送出</button>
-</form></details>
-{% endif %}
-
-{% if r.criteria %}<div class="card"><h2>評分項目</h2><table>
-{% for c in r.criteria %}<tr><th>{{ c.name }}</th><td>{{ c.band }}</td><td>{{ c.comment }}</td></tr>{% endfor %}
-</table></div>{% endif %}
-
-{% if r.corrections %}<div class="card"><h2>修改建議</h2>
-{% for c in r.corrections %}<div class="mistake"><p class="bad">✗ {{ c.original }}</p><p class="ok">✓ {{ c.corrected }}</p><p class="muted">{{ c.reason }}</p></div>{% endfor %}
-</div>{% endif %}
-
-{% if r.improved_version %}<div class="card"><h2>高分示範</h2><pre>{{ r.improved_version }}</pre></div>{% endif %}
-
-<details class="card"><summary>原始提交內容</summary>
-{% for i in image_ids %}<p><a href="/images/{{ i }}" target="_blank"><img src="/images/{{ i }}" style="max-width:100%;border:1px solid var(--line);border-radius:6px"></a></p>{% endfor %}
-{% if sub.raw_text %}<pre>{{ sub.raw_text }}</pre>{% endif %}</details>
-<form method="post" action="/submissions/{{ sub.id }}/delete" style="margin:8px 0 24px" onsubmit="return confirm('確定刪除這份提交？錯題和截圖會一起刪掉，當天進度也會扣回來。');">
-<button class="ghost danger">🗑 刪除這份提交</button> <span class="muted">交錯或重複交了才需要。</span></form>
 <style>
-.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-details.edit{margin-top:6px}
-details.edit summary{cursor:pointer;color:var(--accent);font-size:.9rem}
-.editgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:4px 12px;margin-top:6px}
-.editgrid .wide{grid-column:1/-1}
-.editgrid textarea{min-height:0}
-#add,#correct{scroll-margin-top:70px}
-table.fill{width:100%;border-collapse:collapse;margin:6px 0}
-table.fill th{font-size:.85rem;color:var(--muted);font-weight:500;text-align:left;padding:2px 4px}
-table.fill td{padding:3px 4px;border:0}
-table.fill td:first-child{width:22%}.mistake{scroll-margin-top:70px}
+.head{margin-bottom:18px}
+.src{margin:0 0 2px;font-size:.95rem}
+.head h1{margin:0;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.when{font-size:.95rem;font-weight:400}
+.big{margin:0;font-size:1.1rem;white-space:nowrap;display:flex;align-items:baseline;gap:4px}
+.big b{font-size:2.4rem;line-height:1;color:var(--ink)}
+.summary{font-size:1.05rem;max-width:40em;margin-top:10px}
+.legend{margin:12px 0 0}
+.q{scroll-margin-top:80px}
+.qhead{margin-bottom:6px}
+.qno{color:var(--ink)}
+.qtext{font-weight:500}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+.pair>div{background:var(--paper);border-radius:8px;padding:8px 12px}
+.pair dt{font-size:.8rem;color:var(--muted)}
+.pair dd{margin:0;font-size:1.15rem;overflow-wrap:anywhere}
+@media (max-width:480px){.pair{grid-template-columns:1fr}}
+.tip{background:var(--ink-soft);border-radius:8px;padding:8px 12px}
+.qfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)}
+.qfoot details{flex:1 1 100%}
+.ok-item{border-top:1px solid var(--rule);padding:12px 0;scroll-margin-top:80px}
+details.sheet>summary{margin:-4px 0}
+details.sheet[open]>summary{margin-bottom:12px}
+table.fill td,table.fill th{border:0;padding:3px 4px}
+table.fill th{font-size:.85rem;color:var(--muted);font-weight:500}
+table.fill td:first-child{width:22%}
+.fix{border-top:1px solid var(--rule);padding:10px 0}.fix:first-of-type{border-top:0}
+.strike{text-decoration:line-through;text-decoration-color:var(--red)}
+.score{font-weight:700;white-space:nowrap}
+.manage{margin:12px 0}
+:target{animation:flash 1.2s ease-out}
+@keyframes flash{from{box-shadow:0 0 0 3px var(--ink)}to{box-shadow:0 0 0 3px transparent}}
 </style>
 <script>
 const ff = document.getElementById('fillform');
 if (ff) ff.addEventListener('submit', () => {
   const b = document.getElementById('fillgo');
   b.disabled = true;
-  b.textContent = '批改中…約 20–40 秒';
+  b.textContent = '批改中，約 20–40 秒';
 });
+// Tapping an answer box opens the folded section it lives in.
+function openTarget() {
+  const el = location.hash && document.querySelector(location.hash);
+  const d = el && el.closest('details');
+  if (d) d.open = true;
+}
+addEventListener('hashchange', openTarget);
+openTarget();
 </script>
 {% endblock %}

@@ -7,7 +7,7 @@ from typing import Callable, Sequence
 from sqlmodel import Session
 
 from app import config, grader, review
-from app.logic import add_progress, get_or_create_day, get_settings, practice_date, progress_text
+from app.logic import add_progress, get_or_create_day, get_settings, current_date, progress_text
 from app.models import OBJECTIVE_SKILLS, SKILL_ZH, UNGRADED, Submission, SubmissionImage
 
 log = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def process(session: Session, skill: str, text: str, source: str, now: datetime,
     typed = book_info or {}
     src = {k: (typed.get(k) or detected.get(k) or "").strip() for k in SOURCE_FIELDS}
     st = get_settings(session)
-    day_str = practice_date(st, now)
+    day_str = current_date(session, st, now)
     sub = Submission(
         created_at=now, date=day_str, skill=skill, source=source, raw_text=prompt_text,
         question_count=result.get("question_count", 0), correct_count=0,

@@ -184,3 +184,19 @@ def test_settings_reject_out_of_order_times(session):
     session.rollback()
     with pytest.raises(SettingsError):  # settling after the morning reminder would overlap the next day
         update_settings(session, st, {"deadline_time": "08:00", "settle_time": "10:00", "settle_next_day": "1"}, noon)
+
+
+def test_switching_to_next_morning_settlement_does_not_reopen_a_settled_day(session, transport):
+    st = setup(session)
+    tick(session, datetime(2026, 10, 29, 23, 59))  # settled under the old same-day rule
+    tick(session, datetime(2026, 10, 30, 0, 0))
+    st.settle_time, st.settle_next_day, st.deadline_time, st.deadline_next_day = "01:59", True, "01:58", True
+    session.add(st)
+    session.commit()
+    from app import submissions
+    from tests.fakes import q, result
+    sub, _ = submissions.process(session, "reading", "x", "web", datetime(2026, 10, 30, 0, 22),
+                                 grade_fn=lambda *a: result([q("1", user="a", key="a")]))
+    assert sub.date == "2026-10-30"
+    tick(session, datetime(2026, 10, 30, 0, 23))
+    assert session.get(DayRecord, "2026-10-30").settled is False

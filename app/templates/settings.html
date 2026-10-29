@@ -1,51 +1,74 @@
 {% extends "base.html" %}{% block body %}
-<h1>⚙️ 設定</h1>
-{% for n in notes %}<div class="notice">{{ n }}</div>{% endfor %}
-{% if st.pending_penalty %}<div class="notice warn">⏳ 待生效（{{ st.pending_apply_at.strftime('%m/%d %H:%M') }}）：
+<h1>設定</h1>
+{% for n in notes %}<div class="note {{ 'ok' if n.startswith('已儲存') }}">{{ n }}</div>{% endfor %}
+{% if st.pending_penalty %}<div class="note warn">{{ st.pending_apply_at.strftime('%m/%d %H:%M') }} 生效的懲罰修改：
 {% for k, v in st.pending_penalty.items() %}<span class="tag">{{ k }} → {{ v }}</span> {% endfor %}</div>{% endif %}
 <form method="post">
-<div class="card">
-<fieldset><legend>每日目標（篇數：每交一次算一篇，0 = 不設）</legend><div class="grid">
-{% for s in SKILLS %}<div><label>{{ SKILL_ZH[s] }}</label><input type="number" min="0" name="goal_{{ s }}" value="{{ st.goals.get(s, 0) }}"></div>{% endfor %}
-</div></fieldset>
-<fieldset><legend>時間</legend><div class="grid">
-<div><label>早上提醒</label><input type="time" name="morning_time" value="{{ st.morning_time }}"></div>
-<div><label>晚上警告</label><input type="time" name="evening_time" value="{{ st.evening_time }}"></div>
-<div><label>截止</label><div class="when"><select name="deadline_next_day"><option value="0">當天</option><option value="1" {{ 'selected' if st.deadline_next_day }}>隔天凌晨</option></select><input type="time" name="deadline_time" value="{{ st.deadline_time }}"></div></div>
-<div><label>結算</label><div class="when"><select name="settle_next_day"><option value="0">當天</option><option value="1" {{ 'selected' if st.settle_next_day }}>隔天凌晨</option></select><input type="time" name="settle_time" value="{{ st.settle_time }}"></div></div>
-</div>
-<p class="muted">結算選「隔天凌晨」時，一天會延長到結算為止，凌晨交的題目都算前一天。</p>
-<style>.when{display:flex;gap:6px}.when select{width:auto}</style></fieldset>
-<fieldset><legend>其他</legend><div class="grid">
-<div><label>你的名字（群組公告用）</label><input name="display_name" value="{{ st.display_name }}"></div>
-<div><label>LINE 每月推播上限</label><input type="number" name="push_monthly_limit" value="{{ st.push_monthly_limit }}"></div>
-</div>
-<p class="muted">LINE 綁定：{{ '✅ 已綁定' if st.owner_user_id else '❌ 未綁定（加機器人好友後傳「綁定 密碼」）' }}</p>
-</fieldset>
-</div>
+<section class="sheet">
+<h2>每日目標</h2>
+<p class="muted">每交一次算一篇，0 表示這科不設目標。</p>
+<div class="grid2">{% for s in SKILLS %}<div><label for="g-{{ s }}">{{ SKILL_ZH[s] }}</label><input type="number" min="0" id="g-{{ s }}" name="goal_{{ s }}" value="{{ st.goals.get(s, 0) }}"></div>{% endfor %}</div>
+</section>
 
-<div class="card">
+<section class="sheet">
+<h2>一天的時間</h2>
+<div class="timeline">
+<div class="t"><label for="morning_time">早上提醒</label><div class="when"><span class="day">當天</span><input type="time" id="morning_time" name="morning_time" value="{{ st.morning_time }}"></div></div>
+<div class="t"><label for="evening_time">晚上警告</label><div class="when"><span class="day">當天</span><input type="time" id="evening_time" name="evening_time" value="{{ st.evening_time }}"></div></div>
+<div class="t"><label for="deadline_time">截止</label><div class="when"><select name="deadline_next_day" aria-label="截止是當天或隔天凌晨"><option value="0">當天</option><option value="1" {{ 'selected' if st.deadline_next_day }}>隔天凌晨</option></select><input type="time" id="deadline_time" name="deadline_time" value="{{ st.deadline_time }}"></div></div>
+<div class="t"><label for="settle_time">結算</label><div class="when"><select name="settle_next_day" aria-label="結算是當天或隔天凌晨"><option value="0">當天</option><option value="1" {{ 'selected' if st.settle_next_day }}>隔天凌晨</option></select><input type="time" id="settle_time" name="settle_time" value="{{ st.settle_time }}"></div></div>
+</div>
+<p class="muted">結算選「隔天凌晨」時，一天會延長到結算為止，凌晨交的題目算前一天。截止後開始轟炸提醒（如果有開）。</p>
+</section>
+
+<section class="sheet">
 <h2>懲罰機制</h2>
-<p class="muted">開啟立即生效；關閉或修改參數要等 24 小時（防止臨時反悔）。</p>
-<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_streak" {{ 'checked' if st.pen_streak }}> 🔥 連續紀錄歸零 + 欠債累積</label></legend>
-<label>欠債上限（目標的幾倍）</label><input type="number" step="0.5" min="1" name="debt_cap" value="{{ st.debt_cap }}"></fieldset>
-
-<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_shame" {{ 'checked' if st.pen_shame }}> 📢 公開羞恥</label></legend>
-<p class="muted">群組：{{ '✅ 已設定' if st.shame_group_id else '❌ 未設定（把機器人拉進群組，你在群組輸入「監督群組」）' }}。群組推播按人數計算額度。</p>
-<label>公告文字（可用 {name} {done} {target} {streak}）</label><input name="shame_template" value="{{ st.shame_template }}"></fieldset>
-
-<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_fine" {{ 'checked' if st.pen_fine }}> 💸 罰金記帳</label></legend>
-<div class="grid"><div><label>每次罰金</label><input type="number" min="0" name="fine_amount" value="{{ st.fine_amount }}"></div>
-<div><label>付給誰</label><input name="fine_note" value="{{ st.fine_note }}"></div></div></fieldset>
-
-<fieldset><legend><label style="display:inline"><input type="checkbox" name="pen_bomb" {{ 'checked' if st.pen_bomb }}> 💣 升級轟炸提醒</label></legend>
-<div class="grid"><div><label>間隔（分鐘，逗號分隔，最後一個會重複）</label><input name="bomb_intervals" value="{{ st.bomb_intervals }}"></div>
-<div><label>每天最多幾則</label><input type="number" min="0" name="bomb_max_per_day" value="{{ st.bomb_max_per_day }}"></div></div>
-<p class="muted">轟炸只用剩餘額度，會先保留本月每天的早晚提醒與結算。</p></fieldset>
-
-<fieldset><legend>🛌 請假</legend><label>每月可請假次數</label><input type="number" min="0" name="leave_per_month" value="{{ st.leave_per_month }}"></fieldset>
+<p class="muted">打開立即生效；關掉或放寬要等 24 小時，防止臨時反悔。</p>
+<div class="pen">
+<label class="switch"><input type="checkbox" name="pen_streak" {{ 'checked' if st.pen_streak }}> 連續紀錄歸零，沒做完的篇數變欠債</label>
+<div class="grid2"><div><label for="debt_cap">隔天目標最多是原本的幾倍</label><input type="number" step="0.5" min="1" id="debt_cap" name="debt_cap" value="{{ st.debt_cap }}"></div></div>
 </div>
-<button>儲存</button>
+<div class="pen">
+<label class="switch"><input type="checkbox" name="pen_shame" {{ 'checked' if st.pen_shame }}> 在監督群組公開</label>
+<p class="muted">{{ '已設定群組。' if st.shame_group_id else '還沒設定群組：把機器人拉進群組，在群組傳「監督群組」。' }}群組推播按人數計算額度。</p>
+<label for="shame_template">公告文字，可用 {name} {done} {target} {streak}</label><input id="shame_template" name="shame_template" value="{{ st.shame_template }}">
+</div>
+<div class="pen">
+<label class="switch"><input type="checkbox" name="pen_fine" {{ 'checked' if st.pen_fine }}> 記一筆罰金</label>
+<div class="grid2"><div><label for="fine_amount">每次金額</label><input type="number" min="0" id="fine_amount" name="fine_amount" value="{{ st.fine_amount }}"></div>
+<div><label for="fine_note">付給誰</label><input id="fine_note" name="fine_note" value="{{ st.fine_note }}"></div></div>
+</div>
+<div class="pen">
+<label class="switch"><input type="checkbox" name="pen_bomb" {{ 'checked' if st.pen_bomb }}> 截止後一直提醒</label>
+<div class="grid2"><div><label for="bomb_intervals">間隔分鐘，用逗號分隔，最後一個會重複</label><input id="bomb_intervals" name="bomb_intervals" value="{{ st.bomb_intervals }}"></div>
+<div><label for="bomb_max_per_day">每天最多幾則</label><input type="number" min="0" id="bomb_max_per_day" name="bomb_max_per_day" value="{{ st.bomb_max_per_day }}"></div></div>
+<p class="muted">只用剩下的推播額度，會先保留本月每天的早晚提醒和結算。</p>
+</div>
+<div class="pen">
+<label for="leave_per_month">每月可請假次數</label><div class="grid2"><div><input type="number" min="0" id="leave_per_month" name="leave_per_month" value="{{ st.leave_per_month }}"></div></div>
+</div>
+</section>
+
+<section class="sheet">
+<h2>其他</h2>
+<div class="grid2">
+<div><label for="display_name">群組公告裡你的名字</label><input id="display_name" name="display_name" value="{{ st.display_name }}"></div>
+<div><label for="push_monthly_limit">LINE 每月推播上限</label><input type="number" id="push_monthly_limit" name="push_monthly_limit" value="{{ st.push_monthly_limit }}"></div>
+</div>
+<p class="muted">LINE：{{ '已綁定' if st.owner_user_id else '還沒綁定，加機器人好友後傳「綁定 你的密碼」' }}</p>
+</section>
+<div class="savebar"><button class="wide">儲存設定</button></div>
 </form>
-<form method="post" action="/logout" style="margin-top:24px"><button class="ghost">登出</button></form>
+<style>
+.timeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0 14px}
+.when{display:flex;gap:6px;align-items:center}
+.when select{width:auto;flex:none}
+.when .day{flex:none;font-size:.9rem;color:var(--muted);padding:0 4px}
+.pen{border-top:1px solid var(--rule);padding:12px 0}
+.pen:first-of-type{border-top:0;padding-top:0}
+.switch{display:flex;align-items:center;gap:10px;font-size:1rem;font-weight:500;margin:4px 0}
+.switch input{width:20px;height:20px}
+.savebar{position:sticky;bottom:calc(var(--tabbar) + 8px + env(safe-area-inset-bottom));z-index:3}
+@media (min-width:760px){.savebar{bottom:16px}}
+</style>
 {% endblock %}

@@ -1,9 +1,10 @@
 {% extends "base.html" %}{% block body %}
-<div class="card" style="max-width:360px;margin:15vh auto">
-<h1>寫未？📝</h1>
-<p class="muted">今天的雅思寫了沒？</p>
-{% if error %}<p class="bad">{{ error }}</p>{% endif %}
-<form method="post"><label>密碼</label><input type="password" name="password" autofocus>
-<p><button>登入</button></p></form>
+<div class="login">
+<h1 class="hand">寫未？</h1>
+<p class="muted">每天問你雅思寫了沒。</p>
+{% if error %}<div class="note bad">{{ error }}，請再試一次。</div>{% endif %}
+<form method="post" class="sheet"><label for="pw" style="margin-top:0">密碼</label><input type="password" id="pw" name="password" autocomplete="current-password" autofocus>
+<button class="wide" style="margin-top:14px">登入</button></form>
 </div>
+<style>.login{max-width:360px;margin:14vh auto 0}.login h1{font-size:3rem;margin:0}</style>
 {% endblock %}

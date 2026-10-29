@@ -226,3 +226,23 @@ def test_line_fill_command(monkeypatch):
         assert "還沒計分" not in text
         assert "格式：補" in line_bot.fill_from_line(s, FakeLine(), "OWNER", "")
         assert "找不到第 99 題" in line_bot.fill_from_line(s, FakeLine(), "OWNER", "99 A")
+
+
+def test_dashboard_answers_the_question_and_takes_leave():
+    init_db()
+    with Session(engine) as s:
+        st = get_settings(s)
+        st.goals = {"listening": 1, "reading": 2, "writing": 0, "speaking": 0}
+        st.leave_per_month = 5
+        s.add(st)
+        s.commit()
+    with TestClient(app) as c:
+        c.post("/login", data={"password": "pw"})
+        page = c.get("/").text
+        assert "寫未？" in page and ("還沒，還差" in page or "寫完了" in page or "今天請假" in page)
+        assert "交閱讀" in page and "星期" in page
+        r = c.post("/leave")
+        assert "已請假" in r.text or "今天已經" in r.text
+        assert "今天請假，不會懲罰" in c.get("/").text or "已經結算" in r.text
+        more = c.get("/more").text
+        assert "寫作工具書" in more and "罰金帳本" in more and "登出" in more

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block body %}
+<h1>更多</h1>
+<nav class="sheet links" aria-label="其他功能">
+<a href="/writing"><b>寫作工具書</b><span class="muted">Task 1、Task 2 題型，連接詞與句型</span></a>
+<a href="/fines"><b>罰金帳本</b><span class="muted">{% if fines %}未付 {{ fines }}{% else %}目前沒有未付罰金{% endif %}</span></a>
+<a href="/settings"><b>設定</b><span class="muted">每日目標、提醒時間、懲罰機制</span></a>
+</nav>
+<p class="muted">LINE：{{ '已綁定' if st.owner_user_id else '還沒綁定，加機器人好友後傳「綁定 你的密碼」' }}</p>
+<form method="post" action="/logout"><button class="quiet">登出</button></form>
+<style>
+.links{padding:4px 20px}
+.links a{display:flex;flex-direction:column;padding:14px 0;border-top:1px solid var(--rule);color:var(--fg);text-decoration:none;line-height:1.5}
+.links a:first-child{border-top:0}
+.links a:hover b{color:var(--ink)}
+</style>
+{% endblock %}

@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app import clock, push
 from app.db import engine
 from app.logic import (
-    apply_pending, day_minute, get_or_create_day, get_settings, is_complete, practice_date, progress_text,
+    apply_pending, current_date, get_or_create_day, minute_in_day, get_settings, is_complete, progress_text,
     setting_minute, time_label,
 )
 from app.models import DayRecord
@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 def tick(session: Session, now: datetime) -> None:
     st = get_settings(session)
     apply_pending(session, st, now)
-    today = practice_date(st, now)
+    today = current_date(session, st, now)
 
     for old in session.exec(
         select(DayRecord).where(DayRecord.settled == False, DayRecord.date < today)  # noqa: E712
@@ -32,7 +32,7 @@ def tick(session: Session, now: datetime) -> None:
         settle_day(session, st, old, now)
 
     day = get_or_create_day(session, st, today)
-    t = day_minute(st, now)
+    t = minute_in_day(today, now)
     deadline = setting_minute(st, "deadline_time")
 
     if not day.morning_sent and setting_minute(st, "morning_time") <= t < deadline:

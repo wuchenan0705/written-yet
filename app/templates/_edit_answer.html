@@ -1,10 +1,10 @@
-<details class="edit"><summary>✏️ 修改這題</summary>
-<form method="post" action="/mistakes/{{ edit.id }}/edit" class="editgrid">
+<details class="fold"><summary>修改這題</summary>
+<form method="post" action="/mistakes/{{ edit.id }}/edit" class="grid2">
 <div><label>題號</label><input name="question_no" value="{{ edit.question_no }}"></div>
 <div><label>你的答案（空白 = 未作答）</label><input name="user_answer" value="{{ edit.user_answer }}"></div>
-<div><label>正確答案（多個用 / 分隔）</label><input name="correct_answer" value="{{ edit.accepted|join(' / ') }}"></div>
+<div><label>正解（多個用 / 分隔）</label><input name="correct_answer" value="{{ edit.accepted|join(' / ') }}"></div>
 <div><label>錯誤類型</label><select name="error_type">{% for t in error_types %}<option {{ 'selected' if t == edit.error_type }}>{{ t }}</option>{% endfor %}</select></div>
-<div class="wide"><label>題目</label><input name="question" value="{{ edit.question }}"></div>
-<div class="wide"><label>解析</label><textarea name="explanation" rows="3">{{ edit.explanation }}</textarea></div>
-<div class="wide"><button>儲存</button> <span class="muted">改了答案或正解會重新比對；改成一樣就會移到答對。{% if edit.options %}選擇題填字母。{% endif %}</span></div>
+<div class="full"><label>題目</label><input name="question" value="{{ edit.question }}"></div>
+<div class="full"><label>解析</label><textarea name="explanation" rows="3" style="min-height:0">{{ edit.explanation }}</textarea></div>
+<div class="full"><button>儲存這題</button> <span class="muted">改了答案或正解會重新比對；和正解一樣就會移到答對。{% if edit.options %}選擇題填字母。{% endif %}</span></div>
 </form></details>
