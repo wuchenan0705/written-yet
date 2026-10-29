@@ -15,11 +15,59 @@ from app.models import (
 )
 
 COOLDOWN = timedelta(hours=24)
+DAY_MINUTES = 24 * 60
+TIME_FIELDS = ("morning_time", "evening_time", "deadline_time", "settle_time")
+
+
+class SettingsError(ValueError):
+    pass
 
 
 def parse_hhmm(value: str) -> time:
     h, m = value.strip().split(":")
     return time(int(h), int(m))
+
+
+def _minutes(t: time) -> int:
+    return t.hour * 60 + t.minute
+
+
+def day_start(st: AppSettings) -> int:
+    """Clock minute at which a practice day begins.
+
+    A settle time earlier than the morning reminder (e.g. 02:00) means the day runs past
+    midnight and ends at settlement; otherwise days follow the calendar.
+    """
+    settle, morning = parse_hhmm(st.settle_time), parse_hhmm(st.morning_time)
+    return _minutes(settle) if settle < morning else 0
+
+
+def day_minute(st: AppSettings, t: time) -> int:
+    """Minutes since the practice day began, so 01:00 comes after 23:00 when the day runs late."""
+    return (_minutes(t) - day_start(st)) % DAY_MINUTES
+
+
+def settle_minute(st: AppSettings) -> int:
+    # Settling exactly at the day boundary happens when the next day begins.
+    return day_minute(st, parse_hhmm(st.settle_time)) or DAY_MINUTES
+
+
+def practice_date(st: AppSettings, now: datetime) -> str:
+    """The practice day `now` belongs to: 01:30 still counts as yesterday if it settles at 02:00."""
+    return (now - timedelta(minutes=day_start(st))).date().isoformat()
+
+
+def time_label(st: AppSettings, value: str) -> str:
+    """'01:00' -> '凌晨 01:00' when that time falls after midnight in the practice day."""
+    return f"凌晨 {value}" if parse_hhmm(value) < parse_hhmm(st.morning_time) else value
+
+
+def check_times(st: AppSettings) -> None:
+    order = [day_minute(st, parse_hhmm(st.morning_time)), day_minute(st, parse_hhmm(st.evening_time)),
+             day_minute(st, parse_hhmm(st.deadline_time)), settle_minute(st)]
+    if order != sorted(order):
+        raise SettingsError("時間順序要是：早上提醒 ≤ 晚上警告 ≤ 截止 ≤ 結算。"
+                            "截止和結算可以設在隔天凌晨（例如 01:00、02:00），但結算要早於早上提醒。")
 
 
 def get_settings(session: Session) -> AppSettings:
@@ -196,9 +244,10 @@ def update_settings(session: Session, st: AppSettings, form: dict, now: datetime
         if f"goal_{s}" in form:
             goals[s] = max(0, int(form[f"goal_{s}"] or 0))
     st.goals = goals
-    for f in ("display_name", "morning_time", "evening_time", "deadline_time", "settle_time"):
+    for f in ("display_name", *TIME_FIELDS):
         if f in form:
             setattr(st, f, str(form[f]).strip())
+    check_times(st)
     if "push_monthly_limit" in form:
         st.push_monthly_limit = int(form["push_monthly_limit"])
 

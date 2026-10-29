@@ -5,7 +5,9 @@ from datetime import date, datetime, timedelta
 from sqlmodel import Session, select
 
 from app import push
-from app.logic import carried_debt, compute_debt, is_complete, outstanding_fines, parse_hhmm, totals
+from app.logic import (
+    carried_debt, compute_debt, day_minute, is_complete, outstanding_fines, parse_hhmm, settle_minute, totals,
+)
 from app.models import MISTAKE_STATUSES, SKILL_ZH, AppSettings, Answer, DayRecord, FineEntry, Submission
 
 BOMB_LINES = [
@@ -116,8 +118,8 @@ def bomb_tick(session: Session, st: AppSettings, day: DayRecord, now: datetime) 
     """Send an escalating reminder after the deadline if the day is still unfinished."""
     if not st.pen_bomb or day.status != "open" or day.settled:
         return False
-    t = now.time()
-    if not (parse_hhmm(st.deadline_time) <= t < parse_hhmm(st.settle_time)):
+    t = day_minute(st, now.time())
+    if not (day_minute(st, parse_hhmm(st.deadline_time)) <= t < settle_minute(st)):
         return False
     if day.bomb_count >= st.bomb_max_per_day:
         return False

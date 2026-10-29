@@ -13,7 +13,8 @@
 <div><label>晚上警告</label><input type="time" name="evening_time" value="{{ st.evening_time }}"></div>
 <div><label>截止</label><input type="time" name="deadline_time" value="{{ st.deadline_time }}"></div>
 <div><label>結算</label><input type="time" name="settle_time" value="{{ st.settle_time }}"></div>
-</div></fieldset>
+</div>
+<p class="muted">截止和結算可以設在隔天凌晨（例如截止 01:00、結算 02:00），只要早於早上提醒。這樣一天會延長到結算為止，凌晨交的題目都算前一天。</p></fieldset>
 <fieldset><legend>其他</legend><div class="grid">
 <div><label>你的名字（群組公告用）</label><input name="display_name" value="{{ st.display_name }}"></div>
 <div><label>LINE 每月推播上限</label><input type="number" name="push_monthly_limit" value="{{ st.push_monthly_limit }}"></div>

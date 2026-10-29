@@ -15,8 +15,10 @@ from app.db import get_session
 from app.grader import GradingError
 from app.logic import (
     get_or_create_day,
+    SettingsError,
     get_settings,
     leaves_used,
+    practice_date,
     outstanding_fines,
     update_settings,
 )
@@ -68,7 +70,7 @@ def logout(request: Request):
 def dashboard(request: Request, session: Session = Depends(get_session)):
     now = clock.now()
     st = get_settings(session)
-    day = get_or_create_day(session, st, now.date().isoformat())
+    day = get_or_create_day(session, st, practice_date(st, now))
     recent = session.exec(select(Submission).order_by(Submission.id.desc()).limit(10)).all()
     return render(
         request, "dashboard.html", st=st, day=day, recent=recent,
@@ -313,6 +315,9 @@ async def save_settings(request: Request, session: Session = Depends(get_session
     st = get_settings(session)
     try:
         notes = update_settings(session, st, form, clock.now())
+    except SettingsError as e:
+        session.rollback()
+        notes = [str(e)]
     except ValueError:
         session.rollback()
         notes = ["格式錯誤，請檢查數字與時間（HH:MM）。"]
