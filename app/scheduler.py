@@ -12,8 +12,8 @@ from sqlmodel import Session, select
 from app import clock, push
 from app.db import engine
 from app.logic import (
-    apply_pending, day_minute, get_or_create_day, get_settings, is_complete, parse_hhmm, practice_date,
-    progress_text, settle_minute, time_label,
+    apply_pending, day_minute, get_or_create_day, get_settings, is_complete, practice_date, progress_text,
+    setting_minute, time_label,
 )
 from app.models import DayRecord
 from app.penalties import bomb_tick, settle_day
@@ -32,29 +32,30 @@ def tick(session: Session, now: datetime) -> None:
         settle_day(session, st, old, now)
 
     day = get_or_create_day(session, st, today)
-    t = day_minute(st, now.time())
-    deadline = day_minute(st, parse_hhmm(st.deadline_time))
+    t = day_minute(st, now)
+    deadline = setting_minute(st, "deadline_time")
 
-    if not day.morning_sent and day_minute(st, parse_hhmm(st.morning_time)) <= t < deadline:
+    if not day.morning_sent and setting_minute(st, "morning_time") <= t < deadline:
         day.morning_sent = True
         session.add(day)
         session.commit()
         push.send_owner(session, st, now, "☀️ 早安！今天的雅思目標：\n" + progress_text(st, day), "morning")
 
     if (not day.evening_sent and day.status == "open" and not is_complete(day)
-            and day_minute(st, parse_hhmm(st.evening_time)) <= t < deadline):
+            and setting_minute(st, "evening_time") <= t < deadline):
         day.evening_sent = True
         session.add(day)
         session.commit()
         push.send_owner(
             session, st, now,
-            f"⚠️ 寫未？今天還沒完成，{time_label(st, st.deadline_time)} 截止！\n" + progress_text(st, day),
+            f"⚠️ 寫未？今天還沒完成，{time_label(st, "deadline_time")} 截止！\n" + progress_text(st, day),
             "evening",
         )
 
     bomb_tick(session, st, day, now)
 
-    if not day.settled and t >= settle_minute(st):
+    # A next-morning settlement is the start of the next practice day: the catch-up loop above runs it.
+    if not day.settled and t >= setting_minute(st, "settle_time"):
         settle_day(session, st, day, now)
 
 

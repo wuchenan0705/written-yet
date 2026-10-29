@@ -33,41 +33,40 @@ def _minutes(t: time) -> int:
 
 
 def day_start(st: AppSettings) -> int:
-    """Clock minute at which a practice day begins.
-
-    A settle time earlier than the morning reminder (e.g. 02:00) means the day runs past
-    midnight and ends at settlement; otherwise days follow the calendar.
-    """
-    settle, morning = parse_hhmm(st.settle_time), parse_hhmm(st.morning_time)
-    return _minutes(settle) if settle < morning else 0
-
-
-def day_minute(st: AppSettings, t: time) -> int:
-    """Minutes since the practice day began, so 01:00 comes after 23:00 when the day runs late."""
-    return (_minutes(t) - day_start(st)) % DAY_MINUTES
-
-
-def settle_minute(st: AppSettings) -> int:
-    # Settling exactly at the day boundary happens when the next day begins.
-    return day_minute(st, parse_hhmm(st.settle_time)) or DAY_MINUTES
+    """Clock minute at which a practice day begins: midnight, or the settle time when
+    settlement is set for the next morning (the day then runs until it)."""
+    return _minutes(parse_hhmm(st.settle_time)) if st.settle_next_day else 0
 
 
 def practice_date(st: AppSettings, now: datetime) -> str:
-    """The practice day `now` belongs to: 01:30 still counts as yesterday if it settles at 02:00."""
+    """The practice day `now` belongs to: 01:30 still counts as yesterday if it settles at 02:00 the next day."""
     return (now - timedelta(minutes=day_start(st))).date().isoformat()
 
 
-def time_label(st: AppSettings, value: str) -> str:
-    """'01:00' -> '凌晨 01:00' when that time falls after midnight in the practice day."""
-    return f"凌晨 {value}" if parse_hhmm(value) < parse_hhmm(st.morning_time) else value
+def day_minute(st: AppSettings, now: datetime) -> int:
+    """Minutes since midnight at the start of now's practice day (01:00 the next day = 1500)."""
+    start = datetime.combine(date.fromisoformat(practice_date(st, now)), time())
+    return int((now - start).total_seconds() // 60)
+
+
+def setting_minute(st: AppSettings, field: str) -> int:
+    """A time setting on the same scale as day_minute."""
+    next_day = {"deadline_time": st.deadline_next_day, "settle_time": st.settle_next_day}.get(field, False)
+    return _minutes(parse_hhmm(getattr(st, field))) + (DAY_MINUTES if next_day else 0)
+
+
+def time_label(st: AppSettings, field: str) -> str:
+    """'凌晨 01:00' for a next-morning time, else the time as set."""
+    value = getattr(st, field)
+    return f"凌晨 {value}" if setting_minute(st, field) >= DAY_MINUTES else value
 
 
 def check_times(st: AppSettings) -> None:
-    order = [day_minute(st, parse_hhmm(st.morning_time)), day_minute(st, parse_hhmm(st.evening_time)),
-             day_minute(st, parse_hhmm(st.deadline_time)), settle_minute(st)]
+    order = [setting_minute(st, f) for f in TIME_FIELDS]
     if order != sorted(order):
-        raise SettingsError("時間順序要是：早上提醒 ≤ 晚上警告 ≤ 截止 ≤ 結算。"
-                            "截止和結算可以設在隔天凌晨（例如 01:00、02:00），但結算要早於早上提醒。")
+        raise SettingsError("時間順序要是：早上提醒 ≤ 晚上警告 ≤ 截止 ≤ 結算（隔天凌晨的時間排在當天之後）。")
+    if st.settle_next_day and _minutes(parse_hhmm(st.settle_time)) > _minutes(parse_hhmm(st.morning_time)):
+        raise SettingsError("隔天的結算要早於早上提醒，不然會和下一天重疊。")
 
 
 def get_settings(session: Session) -> AppSettings:
@@ -247,6 +246,9 @@ def update_settings(session: Session, st: AppSettings, form: dict, now: datetime
     for f in ("display_name", *TIME_FIELDS):
         if f in form:
             setattr(st, f, str(form[f]).strip())
+    for f in ("deadline_next_day", "settle_next_day"):
+        if f in form:
+            setattr(st, f, form[f] in ("1", "on", "true", True))
     check_times(st)
     if "push_monthly_limit" in form:
         st.push_monthly_limit = int(form["push_monthly_limit"])
